@@ -9,7 +9,6 @@ import (
 
 	"github.com/ngergs/ingress/state"
 	websrv "github.com/ngergs/websrv/server"
-	"github.com/rs/zerolog/log"
 )
 
 type HSTSconfig struct {
@@ -37,12 +36,13 @@ func (hsts *HSTSconfig) header() string {
 
 func Start(ingressStateManager *state.IngressStateManager, httpPort int, httpsPort int,
 	errChan chan<- error, hstsConfig *HSTSconfig, handlerSetups ...websrv.HandlerMiddleware) {
+	state := <-ingressStateManager.GetStateChan()
 	reverseProxyManager := reverseProxyManager{}
-	state, ok := ingressStateManager.GetState()
-	if !ok {
-		log.Fatal().Msg("Ingress state not initialized")
+	err := reverseProxyManager.loadIngressState(state)
+	if err != nil {
+		errChan <- err
+		return
 	}
-	reverseProxyManager.loadIngressState(state)
 
 	listener, err := tls.Listen("tcp", ":"+strconv.Itoa(httpsPort), reverseProxyManager.tlsConfig())
 	if err != nil {
@@ -71,6 +71,15 @@ func Start(ingressStateManager *state.IngressStateManager, httpPort int, httpsPo
 		WriteTimeout: time.Duration(10) * time.Second,
 	}
 	go func() { errChan <- httpServer.ListenAndServe() }()
+
+	go func() {
+		for state := range ingressStateManager.GetStateChan() {
+			err := reverseProxyManager.loadIngressState(state)
+			if err != nil {
+				errChan <- err
+			}
+		}
+	}()
 }
 
 func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware) http.Handler {

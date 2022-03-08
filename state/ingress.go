@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -24,7 +23,7 @@ type IngressStateManager struct {
 	serviceLister    v1List.ServiceLister
 	secretLister     v1List.SecretLister
 	ingressClassName string
-	ingressState     atomic.Value // *IngressState
+	ingressStateChan chan *IngressState
 }
 
 type IngressState struct {
@@ -53,6 +52,7 @@ func New(ctx context.Context, config *rest.Config, ingressClassName string) *Ing
 		ingressLister:    factory.Networking().V1().Ingresses().Lister(),
 		serviceLister:    factory.Core().V1().Services().Lister(),
 		secretLister:     factory.Core().V1().Secrets().Lister(),
+		ingressStateChan: make(chan *IngressState),
 	}
 
 	// Start listening to relevant API objects
@@ -64,12 +64,8 @@ func New(ctx context.Context, config *rest.Config, ingressClassName string) *Ing
 	return state
 }
 
-func (stateManager *IngressStateManager) GetState() (state *IngressState, ok bool) {
-	result := stateManager.ingressState.Load()
-	if result == nil {
-		return nil, false
-	}
-	return result.(*IngressState), true
+func (stateManager *IngressStateManager) GetStateChan() <-chan *IngressState {
+	return stateManager.ingressStateChan
 }
 
 func (stateManager *IngressStateManager) recomputeState() {
@@ -83,7 +79,7 @@ func (stateManager *IngressStateManager) recomputeState() {
 		PathMap:    stateManager.getPaths(ingresses),
 		TlsSecrets: stateManager.getSecrets(ingresses),
 	}
-	stateManager.ingressState.Store(ingressState)
+	stateManager.ingressStateChan <- ingressState
 }
 
 func (state *IngressStateManager) startInformer(ctx context.Context, informer cache.SharedIndexInformer, handler func()) {

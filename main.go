@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/ngergs/ingress/server"
 	"github.com/ngergs/ingress/state"
@@ -31,8 +30,6 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ingressStateManager := state.New(ctx, config, "nginx-kubeip")
-
-	time.Sleep(time.Duration(5) * time.Second)
 
 	errChan := make(chan error)
 	server.Start(ingressStateManager, *httpPort, *httpsPort, errChan, hstsConfig,
