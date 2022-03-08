@@ -1,0 +1,9 @@
+{{- range .Values.domains -}}
+{{- $domain := dict "common_name" .names.common_name "ingress_class_name" $.Values.ingressClassName -}}
+{{- include "ingress_robot" (dict "name" $domain.common_name "common_name" $domain.common_name "ingress_class_name" $domain.ingress_class_name)}}
+---
+{{- range .names.subject_alternative_names -}}
+{{- include "ingress_robot" (dict "name" . "common_name" $domain.common_name "ingress_class_name" $domain.ingress_class_name)}}
+---
+{{- end}}
+{{- end}}

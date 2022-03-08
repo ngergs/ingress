@@ -1,0 +1,60 @@
+{{- range .Values.domains -}}
+{{- if .robots -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: robots-{{ .names.common_name }}
+  labels:
+    app.kubernetes.io/name: robots-{{ .names.common_name }}
+spec:
+  replicas: {{ .robots.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: robots-{{ .names.common_name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: robots-{{ .names.common_name }}
+    spec:
+      serviceAccountName: robots
+      containers:
+        - name: imprint
+          image: nginx:alpine
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          securityContext:
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+              readOnly: false
+            - name: var-run
+              mountPath: /var/run
+              readOnly: false
+      volumes:
+        - configMap:
+            name: robots-{{ .names.common_name }}
+          name: nginx-conf
+        - name: nginx-cache
+          emptyDir: {}
+        # needed to register nginx pid
+        - name: var-run
+          emptyDir: {}
+---
+{{- end }}
+{{- end }}

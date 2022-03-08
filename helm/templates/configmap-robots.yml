@@ -1,0 +1,61 @@
+{{- range .Values.domains -}}
+{{- if .robots -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: robots-{{ .names.common_name }}
+data:
+  robots.conf: |
+    log_format json_combined escape=json
+    '{'
+      '"time":"$msec",'
+      '"httpRequest":{'
+        '"requestMethod":"$request_method",'
+        '"requestUrl":"$scheme://$host$request_uri",'
+        '"requestSize":$request_length,'
+        '"status":$status,'
+        '"responseSize":$bytes_sent,'
+        '"userAgent":"$http_user_agent",'
+        '"remoteIp":"$remote_addr",'
+        '"serverIp":"$server_addr",'
+        '"referer":"$http_referer",'
+        '"latency":"${request_time}s",'
+        '"protocol":"$server_protocol"'
+      '}'
+    '}';
+    access_log off;
+    
+    server {
+      server_name _;
+      server_tokens off;
+      listen [::]:8080 ipv6only=on;
+      listen 8080;
+      access_log  /var/log/nginx/access.log  json_combined;
+      
+      # Actual imprint response
+      location /health {
+        access_log off;
+        return 200;
+      }
+      location /robots.txt {
+        default_type text/plain;
+        charset utf-8;
+        return 200 "{{- range .robots.entries -}}User-agent: {{ .user_agent }}\r\n{{- range .allow -}}Allow: {{.}}\r\n{{- end }}{{- range .disallow -}}Disallow: {{.}}\r\n{{- end }}{{- end }}{{- range .robots.sitemap -}}Sitemap: {{ . }} {{- end }}";
+      }
+
+      # Security headers
+      add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'; form-action 'none';  font-src 'none'; img-src 'none'; script-src 'none'; style-src 'none'; worker-src 'none'" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header X-Frame-Options "deny" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "no-referrer" always;
+      add_header Permissions-Policy "accelerometer=(),ambient-light-sensor=(),autoplay=(),battery=(),camera=(),cross-origin-isolated=(self),display-capture=(),document-domain=(),encrypted-media=(),execution-while-not-rendered=(self),execution-while-out-of-viewport=(self),fullscreen=(self),geolocation=(),magnetometer=(),microphone=(),midi=(),navigation-override=(),payment=(),picture-in-picture=(),publickey-credentials-get=(),screen-wake-lock=(),sync-xhr=(),usb=(),web-share=(),xr-spatial-tracking=()" always;
+      add_header Cross-Origin-Embedder-Policy "require-corp" always;
+      add_header Cross-Origin-Opener-Policy "same-origin" always;
+      add_header Cross-Origin-Resource-Policy "same-origin" always;
+      add_header Cache-Control "no-cache, no-store,must-revalidate" always;
+      add_header Pragma "no-cache" always;
+    }
+---
+{{- end }}
+{{- end }}
