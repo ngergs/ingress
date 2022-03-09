@@ -1,28 +1,27 @@
-package server
+package revproxy
 
 import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
-	"sort"
-	"strconv"
 	"strings"
 	"sync/atomic"
 
 	"github.com/ngergs/ingress/state"
-	"github.com/rs/zerolog/log"
 	v1Net "k8s.io/api/networking/v1"
 )
 
-type reverseProxyManager struct {
-	state atomic.Value // *reverseProxyState
+type ReverseProxy struct {
+	Config *Config
+	state  atomic.Value // *reverseProxyState
 }
 
+type BackendRouting map[string][]*backendPathHandler //host->paths in order of priority
+type TlsCerts map[string]*tls.Certificate            //host->cert
+
 type reverseProxyState struct {
-	backendPathHandlers map[string][]*backendPathHandler
-	tlsCerts            map[string]*tls.Certificate
+	backendPathHandlers BackendRouting
+	tlsCerts            TlsCerts
 }
 
 type backendPathHandler struct {
@@ -30,7 +29,7 @@ type backendPathHandler struct {
 	ProxyHandler http.Handler
 }
 
-func (proxy *reverseProxyManager) getState() (state *reverseProxyState, ok bool) {
+func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
 	result := proxy.state.Load()
 	if result == nil {
 		return nil, false
@@ -38,7 +37,7 @@ func (proxy *reverseProxyManager) getState() (state *reverseProxyState, ok bool)
 	return result.(*reverseProxyState), true
 }
 
-func (proxy *reverseProxyManager) loadIngressState(state *state.IngressState) error {
+func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
 	backendPathHandlers, err := getBackendPathHandlers(state)
 	if err != nil {
 		return err
@@ -55,7 +54,7 @@ func (proxy *reverseProxyManager) loadIngressState(state *state.IngressState) er
 	return nil
 }
 
-func (proxy *reverseProxyManager) tlsConfig() *tls.Config {
+func (proxy *ReverseProxy) TlsConfig() *tls.Config {
 	return &tls.Config{
 		MinVersion:       tls.VersionTLS12,
 		CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
@@ -80,7 +79,7 @@ func (proxy *reverseProxyManager) tlsConfig() *tls.Config {
 	}
 }
 
-func (proxy *reverseProxyManager) getHTTPSHandler() http.Handler {
+func (proxy *ReverseProxy) GetHTTPSHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, ok := proxy.getState()
 		if !ok {
@@ -103,7 +102,7 @@ func (proxy *reverseProxyManager) getHTTPSHandler() http.Handler {
 	})
 }
 
-func (proxy *reverseProxyManager) getHTTPHandler() http.Handler {
+func (proxy *ReverseProxy) GetHTTPHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, ok := proxy.getState()
 		if !ok {
@@ -128,59 +127,10 @@ func (proxy *reverseProxyManager) getHTTPHandler() http.Handler {
 	})
 }
 
-func getBackendPathHandlers(state *state.IngressState) (map[string][]*backendPathHandler, error) {
-	pathHandlerMap := make(map[string][]*backendPathHandler)
-	for host, pathRules := range state.PathMap {
-		proxies := make([]*backendPathHandler, len(pathRules))
-		for i, pathRule := range pathRules {
-
-			rawUrl := "http://" + pathRule.Config.Backend.Service.Name +
-				"." + pathRule.Namespace +
-				".svc.cluster.local" +
-				":" + strconv.FormatInt(int64(pathRule.ServicePort.Port), 10)
-			url, err := url.ParseRequestURI(rawUrl)
-			if err != nil {
-				return nil, err
-			}
-			log.Info().Msgf("Loaded proxy backend path %s for host %s and path %s", url.String(), host, pathRule.Config.Path)
-
-			proxies[i] = &backendPathHandler{
-				PathRule:     pathRule,
-				ProxyHandler: httputil.NewSingleHostReverseProxy(url),
-			}
-		}
-		// exact type match first, then the longest path
-		sort.Slice(proxies, func(i int, j int) bool {
-			if *proxies[i].PathRule.Config.PathType == v1Net.PathTypeExact {
-				return true
-			}
-			if *proxies[j].PathRule.Config.PathType == v1Net.PathTypeExact {
-				return false
-			}
-			return len(proxies[i].PathRule.Config.Path) > len(proxies[j].PathRule.Config.Path)
-		})
-		pathHandlerMap[host] = proxies
-	}
-	return pathHandlerMap, nil
-}
-
-func getTlsCerts(state *state.IngressState) (map[string]*tls.Certificate, error) {
-	tlsCerts := make(map[string]*tls.Certificate)
-	for host, secret := range state.TlsSecrets {
-		cert, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
-		if err != nil {
-			return nil, err
-		}
-		log.Info().Msgf("Loaded certificte for host %s", host)
-		tlsCerts[host] = &cert
-	}
-	return tlsCerts, nil
-}
-
+// matches returns if the path satisfies the pathRules. The ImplementationSpecific PathType is evaluated as Prefix PathType.
 func matches(path string, pathRule *state.IngressPathConfig) bool {
 	if *pathRule.Config.PathType == v1Net.PathTypeExact {
 		return path == pathRule.Config.Path
 	}
-	// Prefix Matching is our default
 	return strings.HasPrefix(path, pathRule.Config.Path)
 }

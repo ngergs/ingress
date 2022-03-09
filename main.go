@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/ngergs/ingress/server"
+	"github.com/ngergs/ingress/revproxy"
 	"github.com/ngergs/ingress/state"
 	"github.com/rs/zerolog/log"
 
@@ -19,35 +21,69 @@ import (
 // main starts the ingress controller
 func main() {
 	setup()
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	k8sconfig, err := setupk8s()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to setup Kubernetes client")
+	}
+
+	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
+	reverseProxy, err := revproxy.New(ingressStateManager,
+		revproxy.HttpPort(*httpPort),
+		revproxy.HttpsPort(*httpsPort),
+		revproxy.Optional(revproxy.Hsts(*hstsMaxAge, *hstsIncludeSubdomains, *hstsPreload), *hstsEnabled))
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to setup reverse proxy")
+	}
+	// start listening to state updated and forward them to the reverse proxy
+	go forwardUpdates(ingressStateManager, reverseProxy)
+
+	errChan := reverseProxy.ServeAndListen(ctx,
+		websrv.Optional(websrv.AccessLog(), *accessLog),
+		websrv.RequestID())
+	if *health {
+		go startHealthServer(errChan)
+	}
+
+	for err := range errChan {
+		if errors.Is(err, http.ErrServerClosed) {
+			// thrown from listen, serve and listenAndServe during graceful shutdown
+			log.Debug().Err(err).Msg("expected graceful shutdown error")
+		} else {
+			log.Fatal().Err(err).Msg("Error starting server: %v")
+		}
+	}
+
+}
+
+func setupk8s() (*rest.Config, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
 		if err != nil {
-			log.Fatal().Err(err).Msg("eror reading in cluster config")
+			return nil, err
 		}
 	}
+	return config, nil
+}
 
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	ingressStateManager := state.New(ctx, config, *ingressClassName)
-
-	errChan := make(chan error)
-	server.Start(ingressStateManager, serverConfig, errChan,
-		websrv.Optional(websrv.AccessLog(), *accessLog),
-		websrv.RequestID())
-	if *health {
-		go func() {
-			healthServer := websrv.Build(*healthPort,
-				websrv.HealthCheckHandler(),
-				websrv.Optional(websrv.AccessLog(), *healthAccessLog),
-			)
-			log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)
-			errChan <- healthServer.ListenAndServe()
-		}()
+func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revproxy.ReverseProxy) {
+	for state := range stateManager.GetStateChan() {
+		err := reverseProxy.LoadIngressState(state)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to apply updated state")
+		}
 	}
-	for err := range errChan {
-		log.Fatal().Err(err).Msg("Error starting server: %v")
-	}
+}
 
+func startHealthServer(errChan chan<- error) {
+	healthServer := websrv.Build(*healthPort,
+		websrv.HealthCheckHandler(),
+		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
+	)
+	log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)
+	errChan <- healthServer.ListenAndServe()
 }
