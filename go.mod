@@ -5,7 +5,7 @@ go 1.17
 replace github.com/ngergs/ingress => ./
 
 require (
-	github.com/ngergs/websrv v1.0.4
+	github.com/ngergs/websrv v1.0.5
 	github.com/rs/zerolog v1.26.1
 	k8s.io/api v0.23.4
 	k8s.io/apimachinery v0.23.4
