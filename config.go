@@ -23,7 +23,8 @@ var hstsPreload = flag.Bool("hsts-preload", false, "Whether the HSTS preload dir
 var health = flag.Bool("health", true, "Whether to start the health check endpoint (/ under a separate port)")
 var healthAccessLog = flag.Bool("health-access-log", false, "Prints an access log for the health check endpoint to stdout.")
 var healthPort = flag.Int("health-port", 8081, "Different port under which the health check endpoint runs.")
-var hstsConfig *server.HSTSconfig
+var ingressClassName = flag.String("ingress-class-name", "ingress", "Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated.")
+var serverConfig *server.Config
 
 func setup() {
 	flag.Usage = func() {
@@ -44,10 +45,12 @@ func setup() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
 
-	hstsConfig = &server.HSTSconfig{
-		Enabled:           *hstsEnabled,
-		MaxAge:            *hstsMaxAge,
-		IncludeSubdomains: *hstsIncludeSubdomains,
-		Preload:           *hstsPreload,
+	serverConfig = &server.Config{
+		HttpPort:              *httpPort,
+		HttpsPort:             *httpsPort,
+		HstsEnabled:           *hstsEnabled,
+		HstsMaxAge:            *hstsMaxAge,
+		HstsIncludeSubdomains: *hstsIncludeSubdomains,
+		HstsPreload:           *hstsPreload,
 	}
 }

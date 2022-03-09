@@ -1,0 +1,6 @@
+{{- $general := dict "email" .Values.issuer.email "ingressClassName" .Values.ingressClassName -}}
+{{- $staging := dict "name" "letsencrypt-staging" "url" "https://acme-staging-v02.api.letsencrypt.org/directory" "general" $general -}}
+{{- $prod := dict "name" "letsencrypt-prod" "url" "https://acme-v02.api.letsencrypt.org/directory" "general" $general -}}
+{{- include "issuer" $staging}}
+---
+{{- include "issuer" $prod}}

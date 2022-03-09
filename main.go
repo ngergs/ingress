@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// main starts the ingress controller
 func main() {
 	setup()
 	config, err := rest.InClusterConfig()
@@ -29,10 +30,10 @@ func main() {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	ingressStateManager := state.New(ctx, config, "nginx-kubeip")
+	ingressStateManager := state.New(ctx, config, *ingressClassName)
 
 	errChan := make(chan error)
-	server.Start(ingressStateManager, *httpPort, *httpsPort, errChan, hstsConfig,
+	server.Start(ingressStateManager, serverConfig, errChan,
 		websrv.Optional(websrv.AccessLog(), *accessLog),
 		websrv.RequestID())
 	if *health {

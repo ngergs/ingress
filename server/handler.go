@@ -57,14 +57,15 @@ func (proxy *reverseProxyManager) loadIngressState(state *state.IngressState) er
 
 func (proxy *reverseProxyManager) tlsConfig() *tls.Config {
 	return &tls.Config{
-		MinVersion:               tls.VersionTLS12,
-		PreferServerCipherSuites: true,
-		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+		MinVersion:       tls.VersionTLS12,
+		CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
 		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 		},
+		NextProtos: []string{"h2", "http/1.1"},
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			state, ok := proxy.getState()
 			if !ok {
@@ -79,7 +80,7 @@ func (proxy *reverseProxyManager) tlsConfig() *tls.Config {
 	}
 }
 
-func (proxy *reverseProxyManager) getTLSHandler() http.Handler {
+func (proxy *reverseProxyManager) getHTTPSHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, ok := proxy.getState()
 		if !ok {
@@ -88,6 +89,7 @@ func (proxy *reverseProxyManager) getTLSHandler() http.Handler {
 		}
 		pathHandlers, ok := state.backendPathHandlers[r.Host]
 		if !ok {
+			w.WriteHeader(http.StatusNotFound)
 			return // no response if host does not match
 		}
 		// first match is selected
@@ -110,33 +112,21 @@ func (proxy *reverseProxyManager) getHTTPHandler() http.Handler {
 		}
 		pathHandlers, ok := state.backendPathHandlers[r.Host]
 		if !ok {
-			w.WriteHeader(http.StatusBadGateway)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/well-known/acme-challenge") {
+		if strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge") {
 			for _, pathHandler := range pathHandlers {
 				if matches(r.URL.Path, pathHandler.PathRule) {
+					log.Warn().Msgf("Acme Handler for %s is %s", r.Host, &pathHandler.PathRule.Config.Backend.Service.Name)
 					pathHandler.ProxyHandler.ServeHTTP(w, r)
 					return
 				}
 			}
 		}
 		w.Header().Set("Location", "https://"+r.Host+r.URL.Path)
-		w.WriteHeader(http.StatusMovedPermanently)
+		w.WriteHeader(http.StatusPermanentRedirect)
 	})
-}
-
-func getTlsCerts(state *state.IngressState) (map[string]*tls.Certificate, error) {
-	tlsCerts := make(map[string]*tls.Certificate)
-	for host, secret := range state.TlsSecrets {
-		cert, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
-		if err != nil {
-			return nil, err
-		}
-		log.Info().Msgf("Loaded certificte for host %s", host)
-		tlsCerts[host] = &cert
-	}
-	return tlsCerts, nil
 }
 
 func getBackendPathHandlers(state *state.IngressState) (map[string][]*backendPathHandler, error) {
@@ -144,15 +134,17 @@ func getBackendPathHandlers(state *state.IngressState) (map[string][]*backendPat
 	for host, pathRules := range state.PathMap {
 		proxies := make([]*backendPathHandler, len(pathRules))
 		for i, pathRule := range pathRules {
+
 			rawUrl := "http://" + pathRule.Config.Backend.Service.Name +
 				"." + pathRule.Namespace +
 				".svc.cluster.local" +
 				":" + strconv.FormatInt(int64(pathRule.ServicePort.Port), 10)
 			url, err := url.ParseRequestURI(rawUrl)
-			log.Info().Msgf("Loaded ProxyPath %s for host %s and path %s", url.String(), host, pathRule.Config.Path)
 			if err != nil {
 				return nil, err
 			}
+			log.Info().Msgf("Loaded proxy backend path %s for host %s and path %s", url.String(), host, pathRule.Config.Path)
+
 			proxies[i] = &backendPathHandler{
 				PathRule:     pathRule,
 				ProxyHandler: httputil.NewSingleHostReverseProxy(url),
@@ -171,6 +163,19 @@ func getBackendPathHandlers(state *state.IngressState) (map[string][]*backendPat
 		pathHandlerMap[host] = proxies
 	}
 	return pathHandlerMap, nil
+}
+
+func getTlsCerts(state *state.IngressState) (map[string]*tls.Certificate, error) {
+	tlsCerts := make(map[string]*tls.Certificate)
+	for host, secret := range state.TlsSecrets {
+		cert, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
+		if err != nil {
+			return nil, err
+		}
+		log.Info().Msgf("Loaded certificte for host %s", host)
+		tlsCerts[host] = &cert
+	}
+	return tlsCerts, nil
 }
 
 func matches(path string, pathRule *state.IngressPathConfig) bool {
