@@ -5,7 +5,7 @@ go 1.17
 replace github.com/ngergs/ingress => ./
 
 require (
-	github.com/ngergs/websrv v1.0.3
+	github.com/ngergs/websrv v1.0.4
 	github.com/rs/zerolog v1.26.1
 	k8s.io/api v0.23.4
 	k8s.io/apimachinery v0.23.4
@@ -27,7 +27,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
-	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect
+	golang.org/x/oauth2 v0.0.0-20220309155454-6242fa91716a // indirect
 	golang.org/x/sys v0.0.0-20220307203707-22a9840ba4d7 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect

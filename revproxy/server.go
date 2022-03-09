@@ -71,15 +71,13 @@ func (proxy *ReverseProxy) startHttp(ctx context.Context, errChan chan<- error, 
 }
 
 func (proxy *ReverseProxy) gracefulShutdown(ctx context.Context, server *http.Server) {
-	for range ctx.Done() {
-		shutdownCtx := context.Background()
-		shutdownCtx, cancel := context.WithDeadline(shutdownCtx, time.Now().Add(proxy.Config.ShutdownTimeout))
-		err := server.Shutdown(shutdownCtx)
-		if err != nil {
-			log.Warn().Err(err).Msg("error durch graceful shutdown")
-		}
-		cancel()
-		return
+	<-ctx.Done()
+	shutdownCtx := context.Background()
+	shutdownCtx, cancel := context.WithDeadline(shutdownCtx, time.Now().Add(proxy.Config.ShutdownTimeout))
+	defer cancel()
+	err := server.Shutdown(shutdownCtx)
+	if err != nil {
+		log.Warn().Err(err).Msg("error durch graceful shutdown")
 	}
 }
 
