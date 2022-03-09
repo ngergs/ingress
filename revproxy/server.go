@@ -16,7 +16,7 @@ func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption
 	config := defaultConfig
 	applyOptions(&config, options...)
 
-	reverseProxy := &ReverseProxy{}
+	reverseProxy := &ReverseProxy{Config: &config}
 	state := <-ingressStateManager.GetStateChan()
 	err := reverseProxy.LoadIngressState(state)
 	return reverseProxy, err

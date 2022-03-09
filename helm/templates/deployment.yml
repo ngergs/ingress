@@ -19,7 +19,7 @@ spec:
         cloud.google.com/gke-nodepool: homepage-ngergs-gke-ingress-node-pool
       containers:
         - name: ingress
-          image: ngergs/test
+          image: ngergs/ingress
           imagePullPolicy: Always
           args: ["-access-log","-hsts","-hsts-subdomains","-hsts-preload","-hsts-max-age","63072000","-ingress-class-name",{{.Values.ingressClassName}}]
           securityContext:
