@@ -118,7 +118,6 @@ func (proxy *reverseProxyManager) getHTTPHandler() http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge") {
 			for _, pathHandler := range pathHandlers {
 				if matches(r.URL.Path, pathHandler.PathRule) {
-					log.Warn().Msgf("Acme Handler for %s is %s", r.Host, &pathHandler.PathRule.Config.Backend.Service.Name)
 					pathHandler.ProxyHandler.ServeHTTP(w, r)
 					return
 				}

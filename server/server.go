@@ -47,8 +47,8 @@ func Start(ingressStateManager *state.IngressStateManager, config *Config,
 		return
 	}
 
-	startHttps(reverseProxyManager, config, errChan, handlerSetups...)
-	startHttp(reverseProxyManager, config, errChan, handlerSetups...)
+	startHttps(&reverseProxyManager, config, errChan, handlerSetups...)
+	startHttp(&reverseProxyManager, config, errChan, handlerSetups...)
 
 	go func() {
 		for state := range ingressStateManager.GetStateChan() {
@@ -60,7 +60,7 @@ func Start(ingressStateManager *state.IngressStateManager, config *Config,
 	}()
 }
 
-func startHttps(reverseProxyManager reverseProxyManager, config *Config, errChan chan<- error, handlerSetups ...websrv.HandlerMiddleware) {
+func startHttps(reverseProxyManager *reverseProxyManager, config *Config, errChan chan<- error, handlerSetups ...websrv.HandlerMiddleware) {
 	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(config.HttpsPort), reverseProxyManager.tlsConfig())
 	if err != nil {
 		errChan <- err
@@ -86,7 +86,7 @@ func startHttps(reverseProxyManager reverseProxyManager, config *Config, errChan
 	}()
 }
 
-func startHttp(reverseProxyManager reverseProxyManager, config *Config, errChan chan<- error, handlerSetups ...websrv.HandlerMiddleware) {
+func startHttp(reverseProxyManager *reverseProxyManager, config *Config, errChan chan<- error, handlerSetups ...websrv.HandlerMiddleware) {
 	httpServer := &http.Server{
 		Addr:         ":" + strconv.Itoa(config.HttpPort),
 		Handler:      addMiddleware(reverseProxyManager.getHTTPHandler(), handlerSetups...),
