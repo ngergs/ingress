@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/ngergs/ingress/revproxy"
@@ -22,9 +23,8 @@ import (
 // main starts the ingress controller
 func main() {
 	setup()
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var wg sync.WaitGroup
+	sigtermCtx := websrv.SigTermCtx(context.Background())
 
 	k8sconfig, err := setupk8s()
 	if err != nil {
@@ -32,7 +32,7 @@ func main() {
 	}
 
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
+	ingressStateManager := state.New(sigtermCtx, k8sconfig, *ingressClassName)
 	reverseProxy := revproxy.New(ingressStateManager,
 		revproxy.HttpPort(*httpPort),
 		revproxy.HttpsPort(*httpsPort),
@@ -51,21 +51,29 @@ func main() {
 		websrv.Optional(websrv.AccessLog(), *accessLog),
 		websrv.RequestID(),
 	}
-	go func() { errChan <- reverseProxy.StartHttp(ctx, middleware...) }()
-	go func() { errChan <- reverseProxy.StartHttps(ctx, middleware...) }()
+
+	httpServer, err := reverseProxy.GetServerHttp(sigtermCtx, middleware...)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get HTTP server setup")
+	}
+	websrv.AddGracefulShutdown(sigtermCtx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
+	go func() { errChan <- httpServer.ListenAndServe() }()
+
+	httpsServer, tlsListener, err := reverseProxy.GetServerHttps(sigtermCtx, middleware...)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get HTTPs server setup")
+	}
+	websrv.AddGracefulShutdown(sigtermCtx, &wg, httpsServer, time.Duration(*shutdownTimeout)*time.Second)
+	go func() { errChan <- httpServer.Serve(tlsListener) }()
+
 	if *health {
-		go func() { errChan <- startHealthServer(func() bool { return ingressStateManager.Ready }) }()
+		healthServer := getHealthServer(func() bool { return ingressStateManager.Ready })
+		websrv.AddGracefulShutdown(sigtermCtx, &wg, healthServer, time.Duration(*shutdownTimeout)*time.Second)
+		go func() { errChan <- healthServer.ListenAndServe() }()
 	}
 
-	for err := range errChan {
-		if errors.Is(err, http.ErrServerClosed) {
-			// thrown from listen, serve and listenAndServe during graceful shutdown
-			log.Debug().Err(err).Msg("expected graceful shutdown error")
-		} else {
-			log.Fatal().Err(err).Msg("Error starting server: %v")
-		}
-	}
-
+	go logErrors(errChan)
+	wg.Wait()
 }
 
 // setupk8s reads the cluster k8s configuration. If none is available the ~/.kube/config file is used as a fallback for local development.
@@ -92,11 +100,23 @@ func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revpr
 }
 
 // startHealthserver initializes the conditional health server.
-func startHealthServer(condition func() bool) error {
+func getHealthServer(condition func() bool) *http.Server {
 	healthServer := websrv.Build(*healthPort,
 		websrv.HealthCheckConditionalHandler(condition),
 		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
 	)
 	log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)
-	return healthServer.ListenAndServe()
+	return healthServer
+}
+
+// logErrors listens to the provided errChan and logs the received errors
+func logErrors(errChan <-chan error) {
+	for err := range errChan {
+		if errors.Is(err, http.ErrServerClosed) {
+			// thrown from listen, serve and listenAndServe during graceful shutdown
+			log.Debug().Err(err).Msg("Expected graceful shutdown error")
+		} else {
+			log.Fatal().Err(err).Msg("Error from server: %v")
+		}
+	}
 }

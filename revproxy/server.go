@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/ngergs/ingress/state"
 	websrv "github.com/ngergs/websrv/server"
@@ -25,10 +24,10 @@ func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption
 	return reverseProxy
 }
 
-func (proxy *ReverseProxy) StartHttps(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) error {
+func (proxy *ReverseProxy) GetServerHttps(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) (*http.Server, net.Listener, error) {
 	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(proxy.Config.HttpsPort), proxy.TlsConfig())
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	tlsHandler := proxy.GetHTTPSHandler()
 	if proxy.Config.Hsts != nil {
@@ -41,34 +40,21 @@ func (proxy *ReverseProxy) StartHttps(ctx context.Context, handlerSetups ...webs
 		WriteTimeout: proxy.Config.WriteTimeout,
 	}
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	go proxy.gracefulShutdown(ctx, tlsServer)
 	log.Info().Msgf("Listening for HTTPS under container port %d", proxy.Config.HttpsPort)
-	return tlsServer.Serve(tlsListener)
+	return tlsServer, tlsListener, nil
 }
 
-func (proxy *ReverseProxy) StartHttp(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) error {
+func (proxy *ReverseProxy) GetServerHttp(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) (*http.Server, error) {
 	httpServer := &http.Server{
 		Addr:         ":" + strconv.Itoa(proxy.Config.HttpPort),
 		Handler:      addMiddleware(proxy.GetHTTPHandler(), handlerSetups...),
 		ReadTimeout:  proxy.Config.ReadTimeout,
 		WriteTimeout: proxy.Config.WriteTimeout,
 	}
-	go proxy.gracefulShutdown(ctx, httpServer)
 	log.Info().Msgf("Listening for HTTP under container port %d", proxy.Config.HttpPort)
-	return httpServer.ListenAndServe()
-}
-
-func (proxy *ReverseProxy) gracefulShutdown(ctx context.Context, server *http.Server) {
-	<-ctx.Done()
-	shutdownCtx := context.Background()
-	shutdownCtx, cancel := context.WithDeadline(shutdownCtx, time.Now().Add(proxy.Config.ShutdownTimeout))
-	defer cancel()
-	err := server.Shutdown(shutdownCtx)
-	if err != nil {
-		log.Warn().Err(err).Msg("error durch graceful shutdown")
-	}
+	return httpServer, nil
 }
 
 func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware) http.Handler {

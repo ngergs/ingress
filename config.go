@@ -24,6 +24,7 @@ var healthAccessLog = flag.Bool("health-access-log", false, "Prints an access lo
 var healthPort = flag.Int("health-port", 8081, "Different port under which the health check endpoint runs.")
 var ingressClassName = flag.String("ingress-class-name", "ingress", "Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated.")
 var readTimeout = flag.Int("read-timeout", 10, "Timeout to read the entire request in seconds.")
+var shutdownTimeout = flag.Int("shutdown-timeout", 10, "Timeout to graceful shutdown the reverse proxy in seconds.")
 var writeTimeout = flag.Int("write-timeout", 10, "Timeout to write the complete response in seconds.")
 
 func setup() {
