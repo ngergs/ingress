@@ -54,7 +54,7 @@ func main() {
 	go func() { errChan <- reverseProxy.StartHttp(ctx, middleware...) }()
 	go func() { errChan <- reverseProxy.StartHttps(ctx, middleware...) }()
 	if *health {
-		go func() { errChan <- startHealthServer() }()
+		go func() { errChan <- startHealthServer(func() bool { return ingressStateManager.Ready }) }()
 	}
 
 	for err := range errChan {
@@ -68,6 +68,8 @@ func main() {
 
 }
 
+// setupk8s reads the cluster k8s configuration. If none is available the ~/.kube/config file is used as a fallback for local development.
+// For providers other than GKE additional imports have to be provided for this fallback to work.
 func setupk8s() (*rest.Config, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -79,6 +81,7 @@ func setupk8s() (*rest.Config, error) {
 	return config, nil
 }
 
+// forwardUpdates listens to the update channel from the stateManager and calls the LoadIngressState method of the reverse proxy to forwards the results.
 func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revproxy.ReverseProxy) {
 	for state := range stateManager.GetStateChan() {
 		err := reverseProxy.LoadIngressState(state)
@@ -88,9 +91,10 @@ func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revpr
 	}
 }
 
-func startHealthServer() error {
+// startHealthserver initializes the conditional health server.
+func startHealthServer(condition func() bool) error {
 	healthServer := websrv.Build(*healthPort,
-		websrv.HealthCheckHandler(),
+		websrv.HealthCheckConditionalHandler(condition),
 		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
 	)
 	log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)
