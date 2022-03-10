@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ngergs/ingress/revproxy"
 	"github.com/ngergs/ingress/state"
@@ -30,10 +31,14 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to setup Kubernetes client")
 	}
 
+	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
 	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
 	reverseProxy, err := revproxy.New(ingressStateManager,
 		revproxy.HttpPort(*httpPort),
 		revproxy.HttpsPort(*httpsPort),
+		revproxy.ReadTimeout(time.Duration(*readTimeout)*time.Second),
+		revproxy.WriteTimeout(time.Duration(*writeTimeout)*time.Second),
+		revproxy.BackendTimeout(backendTimeout),
 		revproxy.Optional(revproxy.Hsts(*hstsMaxAge, *hstsIncludeSubdomains, *hstsPreload), *hstsEnabled))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to setup reverse proxy")

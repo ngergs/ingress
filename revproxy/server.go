@@ -3,6 +3,7 @@ package revproxy
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,7 +17,11 @@ func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption
 	config := defaultConfig
 	applyOptions(&config, options...)
 
-	reverseProxy := &ReverseProxy{Config: &config}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout: config.BackendTimeout,
+	}).DialContext
+	reverseProxy := &ReverseProxy{Config: &config, Transport: transport}
 	state := <-ingressStateManager.GetStateChan()
 	err := reverseProxy.LoadIngressState(state)
 	return reverseProxy, err
@@ -42,8 +47,8 @@ func (proxy *ReverseProxy) startHttps(ctx context.Context, errChan chan<- error,
 	}
 	tlsServer := &http.Server{
 		Handler:      addMiddleware(tlsHandler, handlerSetups...),
-		ReadTimeout:  time.Duration(10) * time.Second,
-		WriteTimeout: time.Duration(10) * time.Second,
+		ReadTimeout:  proxy.Config.ReadTimeout,
+		WriteTimeout: proxy.Config.WriteTimeout,
 	}
 	if err != nil {
 		errChan <- err
@@ -60,8 +65,8 @@ func (proxy *ReverseProxy) startHttp(ctx context.Context, errChan chan<- error, 
 	httpServer := &http.Server{
 		Addr:         ":" + strconv.Itoa(proxy.Config.HttpPort),
 		Handler:      addMiddleware(proxy.GetHTTPHandler(), handlerSetups...),
-		ReadTimeout:  time.Duration(10) * time.Second,
-		WriteTimeout: time.Duration(10) * time.Second,
+		ReadTimeout:  proxy.Config.ReadTimeout,
+		WriteTimeout: proxy.Config.WriteTimeout,
 	}
 	go func() {
 		log.Info().Msgf("Listening for HTTP under container port %d", proxy.Config.HttpPort)

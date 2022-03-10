@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -25,6 +26,7 @@ type IngressStateManager struct {
 	secretLister     v1CoreListers.SecretLister
 	ingressClassName string
 	ingressStateChan chan *IngressState
+	transport        *http.Transport
 }
 
 type BackendPaths map[string][]*IngressPathConfig // host->ingressPath
@@ -107,5 +109,5 @@ func (stateManager *IngressStateManager) startInformer(ctx context.Context, info
 		},
 	}
 	informer.AddEventHandler(wrappedHandler)
-	go informer.Run(ctx.Done())
+	informer.Run(ctx.Done())
 }

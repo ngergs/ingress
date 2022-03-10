@@ -23,6 +23,8 @@ var health = flag.Bool("health", true, "Whether to start the health check endpoi
 var healthAccessLog = flag.Bool("health-access-log", false, "Prints an access log for the health check endpoint to stdout.")
 var healthPort = flag.Int("health-port", 8081, "Different port under which the health check endpoint runs.")
 var ingressClassName = flag.String("ingress-class-name", "ingress", "Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated.")
+var readTimeout = flag.Int("read-timeout", 10, "Timeout to read the entire request in seconds.")
+var writeTimeout = flag.Int("write-timeout", 10, "Timeout to write the complete response in seconds.")
 
 func setup() {
 	flag.Usage = func() {

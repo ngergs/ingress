@@ -12,8 +12,9 @@ import (
 )
 
 type ReverseProxy struct {
-	Config *Config
-	state  atomic.Value // *reverseProxyState
+	Config    *Config
+	Transport *http.Transport
+	state     atomic.Value // *reverseProxyState
 }
 
 type BackendRouting map[string][]*backendPathHandler //host->paths in order of priority
@@ -38,7 +39,7 @@ func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
 }
 
 func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
-	backendPathHandlers, err := getBackendPathHandlers(state)
+	backendPathHandlers, err := getBackendPathHandlers(state, proxy.Transport)
 	if err != nil {
 		return err
 	}

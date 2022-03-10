@@ -13,6 +13,7 @@ type Config struct {
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	ShutdownTimeout time.Duration
+	BackendTimeout  time.Duration
 }
 
 type HstsConfig struct {
@@ -28,6 +29,7 @@ var defaultConfig = Config{
 	ReadTimeout:     time.Duration(10) * time.Second,
 	WriteTimeout:    time.Duration(10) * time.Second,
 	ShutdownTimeout: time.Duration(10) * time.Second,
+	BackendTimeout:  time.Duration(20) * time.Second,
 }
 
 func (hsts *HstsConfig) hstsHeader() string {
@@ -85,6 +87,12 @@ func WriteTimeout(timeout time.Duration) ConfigOption {
 func ShutdownTimeout(timeout time.Duration) ConfigOption {
 	return func(config *Config) {
 		config.ShutdownTimeout = timeout
+	}
+}
+
+func BackendTimeout(timeout time.Duration) ConfigOption {
+	return func(config *Config) {
+		config.BackendTimeout = timeout
 	}
 }
 

@@ -2,6 +2,7 @@ package revproxy
 
 import (
 	"crypto/tls"
+	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"sort"
@@ -12,7 +13,7 @@ import (
 	v1Net "k8s.io/api/networking/v1"
 )
 
-func getBackendPathHandlers(state *state.IngressState) (BackendRouting, error) {
+func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {
 	pathHandlerMap := make(BackendRouting)
 	for host, pathRules := range state.PathMap {
 		proxies := make([]*backendPathHandler, len(pathRules))
@@ -28,9 +29,11 @@ func getBackendPathHandlers(state *state.IngressState) (BackendRouting, error) {
 			}
 			log.Info().Msgf("Loaded proxy backend path %s for host %s and path %s", url.String(), host, pathRule.Config.Path)
 
+			revProxy := httputil.NewSingleHostReverseProxy(url)
+			revProxy.Transport = backendTransport.Clone()
 			proxies[i] = &backendPathHandler{
 				PathRule:     pathRule,
-				ProxyHandler: httputil.NewSingleHostReverseProxy(url),
+				ProxyHandler: revProxy,
 			}
 		}
 		// exact type match first, then the longest path
