@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption) (*ReverseProxy, error) {
+func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption) *ReverseProxy {
 	config := defaultConfig
 	applyOptions(&config, options...)
 
@@ -22,23 +22,13 @@ func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption
 		Timeout: config.BackendTimeout,
 	}).DialContext
 	reverseProxy := &ReverseProxy{Config: &config, Transport: transport}
-	state := <-ingressStateManager.GetStateChan()
-	err := reverseProxy.LoadIngressState(state)
-	return reverseProxy, err
+	return reverseProxy
 }
 
-func (proxy *ReverseProxy) ServeAndListen(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) chan error {
-	errChan := make(chan error)
-	proxy.startHttps(ctx, errChan, handlerSetups...)
-	proxy.startHttp(ctx, errChan, handlerSetups...)
-	return errChan
-}
-
-func (proxy *ReverseProxy) startHttps(ctx context.Context, errChan chan<- error, handlerSetups ...websrv.HandlerMiddleware) {
+func (proxy *ReverseProxy) StartHttps(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) error {
 	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(proxy.Config.HttpsPort), proxy.TlsConfig())
 	if err != nil {
-		errChan <- err
-		return
+		return err
 	}
 	tlsHandler := proxy.GetHTTPSHandler()
 	if proxy.Config.Hsts != nil {
@@ -51,28 +41,23 @@ func (proxy *ReverseProxy) startHttps(ctx context.Context, errChan chan<- error,
 		WriteTimeout: proxy.Config.WriteTimeout,
 	}
 	if err != nil {
-		errChan <- err
-		return
+		return err
 	}
-	go func() {
-		log.Info().Msgf("Listening for HTTPS under container port %d", proxy.Config.HttpsPort)
-		errChan <- tlsServer.Serve(tlsListener)
-	}()
 	go proxy.gracefulShutdown(ctx, tlsServer)
+	log.Info().Msgf("Listening for HTTPS under container port %d", proxy.Config.HttpsPort)
+	return tlsServer.Serve(tlsListener)
 }
 
-func (proxy *ReverseProxy) startHttp(ctx context.Context, errChan chan<- error, handlerSetups ...websrv.HandlerMiddleware) {
+func (proxy *ReverseProxy) StartHttp(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) error {
 	httpServer := &http.Server{
 		Addr:         ":" + strconv.Itoa(proxy.Config.HttpPort),
 		Handler:      addMiddleware(proxy.GetHTTPHandler(), handlerSetups...),
 		ReadTimeout:  proxy.Config.ReadTimeout,
 		WriteTimeout: proxy.Config.WriteTimeout,
 	}
-	go func() {
-		log.Info().Msgf("Listening for HTTP under container port %d", proxy.Config.HttpPort)
-		errChan <- httpServer.ListenAndServe()
-	}()
 	go proxy.gracefulShutdown(ctx, httpServer)
+	log.Info().Msgf("Listening for HTTP under container port %d", proxy.Config.HttpPort)
+	return httpServer.ListenAndServe()
 }
 
 func (proxy *ReverseProxy) gracefulShutdown(ctx context.Context, server *http.Server) {

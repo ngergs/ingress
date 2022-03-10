@@ -33,7 +33,7 @@ func main() {
 
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
 	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
-	reverseProxy, err := revproxy.New(ingressStateManager,
+	reverseProxy := revproxy.New(ingressStateManager,
 		revproxy.HttpPort(*httpPort),
 		revproxy.HttpsPort(*httpsPort),
 		revproxy.ReadTimeout(time.Duration(*readTimeout)*time.Second),
@@ -46,11 +46,15 @@ func main() {
 	// start listening to state updated and forward them to the reverse proxy
 	go forwardUpdates(ingressStateManager, reverseProxy)
 
-	errChan := reverseProxy.ServeAndListen(ctx,
+	errChan := make(chan error)
+	middleware := []websrv.HandlerMiddleware{
 		websrv.Optional(websrv.AccessLog(), *accessLog),
-		websrv.RequestID())
+		websrv.RequestID(),
+	}
+	go func() { errChan <- reverseProxy.StartHttp(ctx, middleware...) }()
+	go func() { errChan <- reverseProxy.StartHttps(ctx, middleware...) }()
 	if *health {
-		go startHealthServer(errChan)
+		go func() { errChan <- startHealthServer() }()
 	}
 
 	for err := range errChan {
@@ -84,11 +88,11 @@ func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revpr
 	}
 }
 
-func startHealthServer(errChan chan<- error) {
+func startHealthServer() error {
 	healthServer := websrv.Build(*healthPort,
 		websrv.HealthCheckHandler(),
 		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
 	)
 	log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)
-	errChan <- healthServer.ListenAndServe()
+	return healthServer.ListenAndServe()
 }

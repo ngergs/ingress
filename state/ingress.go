@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -26,7 +25,7 @@ type IngressStateManager struct {
 	secretLister     v1CoreListers.SecretLister
 	ingressClassName string
 	ingressStateChan chan *IngressState
-	transport        *http.Transport
+	Ready            bool
 }
 
 type BackendPaths map[string][]*IngressPathConfig // host->ingressPath
@@ -65,6 +64,7 @@ func New(ctx context.Context, config *rest.Config, ingressClassName string) *Ing
 		secretLister:     secretInformer.Lister(),
 		ingressClassName: ingressClassName,
 		ingressStateChan: make(chan *IngressState),
+		Ready:            false,
 	}
 
 	// Start listening to relevant API objects for changes
@@ -91,6 +91,7 @@ func (stateManager *IngressStateManager) refetchState() {
 		TlsSecrets: getTlsSecrets(stateManager.secretLister, ingresses),
 	}
 	stateManager.ingressStateChan <- ingressState
+	stateManager.Ready = true
 }
 
 func (stateManager *IngressStateManager) startInformer(ctx context.Context, informer cache.SharedIndexInformer, handler func()) {
