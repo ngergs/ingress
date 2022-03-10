@@ -59,12 +59,12 @@ func main() {
 	websrv.AddGracefulShutdown(sigtermCtx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	go func() { errChan <- httpServer.ListenAndServe() }()
 
-	httpsServer, tlsListener, err := reverseProxy.GetServerHttps(sigtermCtx, middleware...)
+	tlsServer, tlsListener, err := reverseProxy.GetServerHttps(sigtermCtx, middleware...)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get HTTPs server setup")
 	}
-	websrv.AddGracefulShutdown(sigtermCtx, &wg, httpsServer, time.Duration(*shutdownTimeout)*time.Second)
-	go func() { errChan <- httpServer.Serve(tlsListener) }()
+	websrv.AddGracefulShutdown(sigtermCtx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
+	go func() { errChan <- tlsServer.Serve(tlsListener) }()
 
 	if *health {
 		healthServer := getHealthServer(func() bool { return ingressStateManager.Ready })
