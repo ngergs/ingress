@@ -3,8 +3,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: robots-{{ .name }}
-  annotations:
-    nginx.org/mergeable-ingress-type: minion
 spec:
   ingressClassName: {{ .ingress_class_name }}
   rules:

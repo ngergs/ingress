@@ -19,42 +19,32 @@ spec:
       serviceAccountName: robots
       containers:
         - name: imprint
-          image: nginx:alpine
+          image: ngergs/websrv
           imagePullPolicy: Always
+          args: ["-access-log","-in-memory-fs","/app/robots/"]
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
           livenessProbe:
             httpGet:
-              path: /health
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
+              path: /
+              port: health
           securityContext:
             runAsUser: 1000
             readOnlyRootFilesystem: true
           volumeMounts:
-            - name: nginx-conf
-              mountPath: /etc/nginx/conf.d
+            - name: robots-conf
+              mountPath: /app/robots/robots.txt
+              subPath: robots.txt
               readOnly: true
-            - name: nginx-cache
-              mountPath: /var/cache/nginx
-              readOnly: false
-            - name: var-run
-              mountPath: /var/run
-              readOnly: false
       volumes:
         - configMap:
             name: robots-{{ .names.common_name }}
-          name: nginx-conf
-        - name: nginx-cache
-          emptyDir: {}
-        # needed to register nginx pid
-        - name: var-run
-          emptyDir: {}
+          name: robots-conf
 ---
 {{- end }}
 {{- end }}

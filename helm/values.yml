@@ -1,7 +1,7 @@
 replicaCount: 1
 ingressClassName: nginx-kubeip
 issuer:
-  email: niklas.gergs@gmx.de
+  email: niklas@ngergs.de
 domains:
   - names:
       common_name: ngergs.de

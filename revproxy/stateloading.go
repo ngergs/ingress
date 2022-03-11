@@ -58,7 +58,7 @@ func getTlsCerts(state *state.IngressState) (TlsCerts, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Info().Msgf("Loaded certificte for host %s", host)
+		log.Info().Msgf("Loaded certificate for host %s", host)
 		tlsCerts[host] = &cert
 	}
 	return tlsCerts, nil
