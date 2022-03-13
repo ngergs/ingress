@@ -82,7 +82,9 @@ func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []w
 	}
 	middlewareTLS = middleware
 	if *hstsEnabled {
-		middlewareTLS = append(middlewareTLS, websrv.Header(&websrv.Config{Headers: map[string]string{"Strict-Transport-Security": hstsConfig.hstsHeader()}}))
+		middlewareTLS = append([]websrv.HandlerMiddleware{
+			websrv.Header(&websrv.Config{Headers: map[string]string{"Strict-Transport-Security": hstsConfig.hstsHeader()}}),
+		}, middlewareTLS...)
 	}
 	return
 }
