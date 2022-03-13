@@ -2,13 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -35,13 +31,17 @@ func main() {
 	}
 
 	middleware, middlewareTLS := setupMiddleware()
-	httpServer := reverseProxy.GetServer(ctx, *httpPort, middleware...)
-	tlsServer := reverseProxy.GetServerTLS(ctx, middlewareTLS...)
+	httpServer := getServer(httpPort, reverseProxy.GetHttpsRedirectHandler(), middleware...)
+	// port is defined below via listenAndServeTls. Therefore do not set it here to avoid the illusion of it being of relevance here.
+	tlsServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
 	websrv.AddGracefulShutdown(ctx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	websrv.AddGracefulShutdown(ctx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
 
 	errChan := make(chan error)
-	go func() { errChan <- httpServer.ListenAndServe() }()
+	go func() {
+		log.Info().Msgf("Listening for HTTP under container port %s", httpServer.Addr[1:])
+		errChan <- httpServer.ListenAndServe()
+	}()
 	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, reverseProxy.TlsConfig()) }()
 	if *health {
 		healthServer := getHealthServer(isRdy)
@@ -51,18 +51,6 @@ func main() {
 
 	go logErrors(errChan)
 	wg.Wait()
-}
-
-// listenAndServeTls is a wrapper that starts a net.Listener under the given port
-// and subsequently listens with the provided http.Server to that listener.
-// Blocks until finished just like http.server.ListenAndServe
-func listenAndServeTls(ctx context.Context, port int, server *http.Server, tlsConfig *tls.Config) error {
-	log.Info().Msgf("Listening for HTTPS under container port %d", port)
-	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(port), tlsConfig)
-	if err != nil {
-		return err
-	}
-	return server.Serve(tlsListener)
 }
 
 // setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everyhing for the reverse proxy.
@@ -76,8 +64,6 @@ func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
 	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
 	reverseProxy = revproxy.New(
-		revproxy.ReadTimeout(time.Duration(*readTimeout)*time.Second),
-		revproxy.WriteTimeout(time.Duration(*writeTimeout)*time.Second),
 		revproxy.BackendTimeout(backendTimeout))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to setup reverse proxy")
@@ -120,28 +106,6 @@ func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revpr
 		err := reverseProxy.LoadIngressState(state)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to apply updated state")
-		}
-	}
-}
-
-// startHealthserver initializes the conditional health server.
-func getHealthServer(condition func() bool) *http.Server {
-	healthServer := websrv.Build(*healthPort,
-		websrv.HealthCheckConditionalHandler(condition),
-		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
-	)
-	log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)
-	return healthServer
-}
-
-// logErrors listens to the provided errChan and logs the received errors
-func logErrors(errChan <-chan error) {
-	for err := range errChan {
-		if errors.Is(err, http.ErrServerClosed) {
-			// thrown from listen, serve and listenAndServe during graceful shutdown
-			log.Debug().Err(err).Msg("Expected graceful shutdown error")
-		} else {
-			log.Fatal().Err(err).Msg("Error from server: %v")
 		}
 	}
 }

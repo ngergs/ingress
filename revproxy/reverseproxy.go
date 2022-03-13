@@ -3,6 +3,7 @@ package revproxy
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -37,6 +38,19 @@ type reverseProxyState struct {
 type backendPathHandler struct {
 	PathRule     *state.IngressPathConfig
 	ProxyHandler http.Handler
+}
+
+// New setups a new reverse proxy. To start it see methods GetServerHttp and GetServerHttps.
+func New(options ...ConfigOption) *ReverseProxy {
+	config := defaultConfig.clone()
+	config.applyOptions(options...)
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout: config.BackendTimeout,
+	}).DialContext
+	reverseProxy := &ReverseProxy{Config: config, Transport: transport}
+	return reverseProxy
 }
 
 // getState returns the given state and whether the state is ok. The returned state is nil if ok is false.
@@ -100,7 +114,7 @@ func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 	})
 }
 
-// GetHttpsRedirectHandlers returns a handler which redirects all requests with HTTP status 308 to the same route but with the https scheme.
+// GetHttpsRedirectHandler returns a handler which redirects all requests with HTTP status 308 to the same route but with the https scheme.
 // Should therefore not be used for TLS listeners.
 // Paths that start with  "/.well-known/acme-challenge" are stil reverse proxied to the backend for ACME challenges.
 func (proxy *ReverseProxy) GetHttpsRedirectHandler() http.Handler {
