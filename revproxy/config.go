@@ -1,101 +1,56 @@
 package revproxy
 
 import (
-	"strconv"
-	"strings"
 	"time"
 )
 
+// Config is a data structure that holds the config options for the reverse proxy
 type Config struct {
-	HttpPort        int
-	HttpsPort       int
-	Hsts            *HstsConfig
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	ShutdownTimeout time.Duration
 	BackendTimeout  time.Duration
 }
 
-type HstsConfig struct {
-	MaxAge            int
-	IncludeSubdomains bool
-	Preload           bool
-}
-
 var defaultConfig = Config{
-	HttpPort:        8080,
-	HttpsPort:       8443,
-	Hsts:            nil,
 	ReadTimeout:     time.Duration(10) * time.Second,
 	WriteTimeout:    time.Duration(10) * time.Second,
 	ShutdownTimeout: time.Duration(10) * time.Second,
 	BackendTimeout:  time.Duration(20) * time.Second,
 }
 
-func (hsts *HstsConfig) hstsHeader() string {
-	if hsts == nil {
-		return "max-age=0"
-	}
-	var result strings.Builder
-	result.WriteString("max-age=")
-	result.WriteString(strconv.Itoa(hsts.MaxAge))
-	if hsts.IncludeSubdomains {
-		result.WriteString("; includeSubDomains")
-	}
-	if hsts.Preload {
-		result.WriteString("; preload")
-	}
-	return result.String()
-}
-
+// ConfigOption is used to implement the functional parameter pattern for the reverse proxy
 type ConfigOption func(*Config)
 
-func HttpPort(port int) ConfigOption {
-	return func(config *Config) {
-		config.HttpPort = port
-	}
-}
-
-func HttpsPort(port int) ConfigOption {
-	return func(config *Config) {
-		config.HttpsPort = port
-	}
-}
-
-func Hsts(maxAge int, includeSubdomains bool, preload bool) ConfigOption {
-	return func(config *Config) {
-		config.Hsts = &HstsConfig{
-			MaxAge:            maxAge,
-			IncludeSubdomains: includeSubdomains,
-			Preload:           preload,
-		}
-	}
-}
-
+// ReadTimeout sets the read timeout for the server
 func ReadTimeout(timeout time.Duration) ConfigOption {
 	return func(config *Config) {
 		config.ReadTimeout = timeout
 	}
 }
 
+// WriteTimeout sets the write timeout for the server
 func WriteTimeout(timeout time.Duration) ConfigOption {
 	return func(config *Config) {
 		config.WriteTimeout = timeout
 	}
 }
 
+// ShutdownTimeout sets the timeout for shutting down gracefully
 func ShutdownTimeout(timeout time.Duration) ConfigOption {
 	return func(config *Config) {
 		config.ShutdownTimeout = timeout
 	}
 }
 
+// BackendTimeout sets the timeout for waiting for the backend response for the reverse proxy
 func BackendTimeout(timeout time.Duration) ConfigOption {
 	return func(config *Config) {
 		config.BackendTimeout = timeout
 	}
 }
 
+// Optional applies the option only if active is true
 func Optional(option ConfigOption, active bool) ConfigOption {
 	return func(config *Config) {
 		if active {
@@ -104,8 +59,19 @@ func Optional(option ConfigOption, active bool) ConfigOption {
 	}
 }
 
-func applyOptions(config *Config, options ...ConfigOption) {
+// applyOptions applied the given variadic options to the config.
+func (config *Config) applyOptions(options ...ConfigOption) {
 	for _, option := range options {
 		option(config)
+	}
+}
+
+// clone creates a deep copy of the config
+func (config *Config) clone() *Config {
+	return &Config{
+		ReadTimeout:     config.ReadTimeout,
+		WriteTimeout:    config.WriteTimeout,
+		ShutdownTimeout: config.ShutdownTimeout,
+		BackendTimeout:  config.BackendTimeout,
 	}
 }

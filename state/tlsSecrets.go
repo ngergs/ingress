@@ -7,6 +7,8 @@ import (
 	v1CoreListers "k8s.io/client-go/listers/core/v1"
 )
 
+// getTlsSecrets fetches for all secrets that are referenced in the ingressed the relevant kubernetes.io/tls secrets from the Kubernetes API
+// and maps them to the hostname from the ingress spec.
 func getTlsSecrets(secretLister v1CoreListers.SecretLister, ingresses []*v1Net.Ingress) TlsSecrets {
 	result := make(map[string]*v1Core.Secret)
 	for _, ingress := range ingresses {

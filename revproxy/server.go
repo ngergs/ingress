@@ -2,61 +2,53 @@ package revproxy
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"net/http"
 	"strconv"
 
-	"github.com/ngergs/ingress/state"
 	websrv "github.com/ngergs/websrv/server"
 	"github.com/rs/zerolog/log"
 )
 
-func New(ingressStateManager *state.IngressStateManager, options ...ConfigOption) *ReverseProxy {
-	config := defaultConfig
-	applyOptions(&config, options...)
+// New setups a new reverse proxy. To start it see methods GetServerHttp and GetServerHttps.
+func New(options ...ConfigOption) *ReverseProxy {
+	config := defaultConfig.clone()
+	config.applyOptions(options...)
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = (&net.Dialer{
 		Timeout: config.BackendTimeout,
 	}).DialContext
-	reverseProxy := &ReverseProxy{Config: &config, Transport: transport}
+	reverseProxy := &ReverseProxy{Config: config, Transport: transport}
 	return reverseProxy
 }
 
-func (proxy *ReverseProxy) GetServerHttps(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) (*http.Server, net.Listener, error) {
-	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(proxy.Config.HttpsPort), proxy.TlsConfig())
-	if err != nil {
-		return nil, nil, err
-	}
-	tlsHandler := proxy.GetHTTPSHandler()
-	if proxy.Config.Hsts != nil {
-		headerMiddleware := websrv.Header(&websrv.Config{Headers: map[string]string{"Strict-Transport-Security": proxy.Config.Hsts.hstsHeader()}})
-		tlsHandler = headerMiddleware(tlsHandler)
-	}
-	tlsServer := &http.Server{
+// GetServerTLS returns the http.Serverto start the https endpoint.
+// For certificate matching to work correctly the server has to use the net.Listener from tls.Listen with the tls.Config from the TlsConfig method.
+// Therefore the port is also nto set here.
+// Middleware is applied in order of occurence, i.e. the first provided middleare sees the request first.
+func (proxy *ReverseProxy) GetServerTLS(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) *http.Server {
+	tlsHandler := proxy.GetHandlerProxying()
+	return &http.Server{
 		Handler:      addMiddleware(tlsHandler, handlerSetups...),
 		ReadTimeout:  proxy.Config.ReadTimeout,
 		WriteTimeout: proxy.Config.WriteTimeout,
 	}
-	if err != nil {
-		return nil, nil, err
-	}
-	log.Info().Msgf("Listening for HTTPS under container port %d", proxy.Config.HttpsPort)
-	return tlsServer, tlsListener, nil
 }
 
-func (proxy *ReverseProxy) GetServerHttp(ctx context.Context, handlerSetups ...websrv.HandlerMiddleware) (*http.Server, error) {
-	httpServer := &http.Server{
-		Addr:         ":" + strconv.Itoa(proxy.Config.HttpPort),
-		Handler:      addMiddleware(proxy.GetHTTPHandler(), handlerSetups...),
+// GetServer returns the http.Server to start the http endpoint.
+// Middleware is applied in order of occurence, i.e. the first provided middleare sees the request first.
+func (proxy *ReverseProxy) GetServer(ctx context.Context, port int, handlerSetups ...websrv.HandlerMiddleware) *http.Server {
+	log.Info().Msgf("Listening for HTTP under container port %d", port)
+	return &http.Server{
+		Addr:         ":" + strconv.Itoa(port),
+		Handler:      addMiddleware(proxy.GetHttpsRedirectHandler(), handlerSetups...),
 		ReadTimeout:  proxy.Config.ReadTimeout,
 		WriteTimeout: proxy.Config.WriteTimeout,
 	}
-	log.Info().Msgf("Listening for HTTP under container port %d", proxy.Config.HttpPort)
-	return httpServer, nil
 }
 
+// addMiddleware is an internal function to apply functional middleware wrapper to a root http.Handler.
 func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware) http.Handler {
 	for _, handlerSetup := range handlerSetups {
 		root = handlerSetup(root)

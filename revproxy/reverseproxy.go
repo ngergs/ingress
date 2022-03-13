@@ -11,25 +11,35 @@ import (
 	v1Net "k8s.io/api/networking/v1"
 )
 
+// ReverseProxy implements the main ingress reverse proxy logic
 type ReverseProxy struct {
-	Config    *Config
+	// Config holds the reverse proxye config
+	Config *Config
+	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
 	Transport *http.Transport
-	state     atomic.Value // *reverseProxyState
+	// state has type *reverseProxyState and holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
+	state atomic.Value
 }
 
-type BackendRouting map[string][]*backendPathHandler //host->paths in order of priority
-type TlsCerts map[string]*tls.Certificate            //host->cert
+// BackendRouting contains a mopping of host name to the relevant backend path handlers in order of priority
+type BackendRouting map[string][]*backendPathHandler
 
+// TlsCerts contains a mapping of host name to the relevant TLS certificates
+type TlsCerts map[string]*tls.Certificate
+
+// reverseProxyState holds the current state of the reverse proxy.
 type reverseProxyState struct {
 	backendPathHandlers BackendRouting
 	tlsCerts            TlsCerts
 }
 
+// backendPathHandler holds the ingress PathRule for path matching as well as the corresponding reverse proxy handler for the given backend path.
 type backendPathHandler struct {
 	PathRule     *state.IngressPathConfig
 	ProxyHandler http.Handler
 }
 
+// getState returns the given state and whether the state is ok. The returned state is nil if ok is false.
 func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
 	result := proxy.state.Load()
 	if result == nil {
@@ -38,23 +48,8 @@ func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
 	return result.(*reverseProxyState), true
 }
 
-func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
-	backendPathHandlers, err := getBackendPathHandlers(state, proxy.Transport)
-	if err != nil {
-		return err
-	}
-	tlsCerts, err := getTlsCerts(state)
-	if err != nil {
-		return err
-	}
-	newProxyState := &reverseProxyState{
-		backendPathHandlers: backendPathHandlers,
-		tlsCerts:            tlsCerts,
-	}
-	proxy.state.Store(newProxyState)
-	return nil
-}
-
+// TlsConfig returns the tls.config for the reverse proxy. Should be used with tls.Listener and the GetHandlerTLS method.
+// The TLS settings can be modified but the GetCertificate field of the returned struct has to be kept unchanges for this setup to work.
 func (proxy *ReverseProxy) TlsConfig() *tls.Config {
 	return &tls.Config{
 		MinVersion:       tls.VersionTLS12,
@@ -80,7 +75,9 @@ func (proxy *ReverseProxy) TlsConfig() *tls.Config {
 	}
 }
 
-func (proxy *ReverseProxy) GetHTTPSHandler() http.Handler {
+// GetHandlerProxying returns the main proxying handler. Can be used with HTTP and HTTPS listeners.
+// A TLS-terminating setup should use this for HTTPS only.
+func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, ok := proxy.getState()
 		if !ok {
@@ -103,7 +100,10 @@ func (proxy *ReverseProxy) GetHTTPSHandler() http.Handler {
 	})
 }
 
-func (proxy *ReverseProxy) GetHTTPHandler() http.Handler {
+// GetHttpsRedirectHandlers returns a handler which redirects all requests with HTTP status 308 to the same route but with the https scheme.
+// Should therefore not be used for TLS listeners.
+// Paths that start with  "/.well-known/acme-challenge" are stil reverse proxied to the backend for ACME challenges.
+func (proxy *ReverseProxy) GetHttpsRedirectHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, ok := proxy.getState()
 		if !ok {

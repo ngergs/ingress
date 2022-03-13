@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -26,6 +28,14 @@ var ingressClassName = flag.String("ingress-class-name", "ingress", "Corresponds
 var readTimeout = flag.Int("read-timeout", 10, "Timeout to read the entire request in seconds.")
 var shutdownTimeout = flag.Int("shutdown-timeout", 10, "Timeout to graceful shutdown the reverse proxy in seconds.")
 var writeTimeout = flag.Int("write-timeout", 10, "Timeout to write the complete response in seconds.")
+var hstsConfig *HstsConfig
+
+// HstsConfig holds the setting sfor HSTS (HTTP Strict Transport Security)
+type HstsConfig struct {
+	MaxAge            int
+	IncludeSubdomains bool
+	Preload           bool
+}
 
 func setup() {
 	flag.Usage = func() {
@@ -45,4 +55,28 @@ func setup() {
 	if *prettyLogging {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
+	if *hstsEnabled {
+		hstsConfig = &HstsConfig{
+			MaxAge:            *hstsMaxAge,
+			IncludeSubdomains: *hstsIncludeSubdomains,
+			Preload:           *hstsPreload,
+		}
+	}
+}
+
+// hstsHeader returns the HSTS HTTP-Header value
+func (hsts *HstsConfig) hstsHeader() string {
+	if hsts == nil {
+		return "max-age=0"
+	}
+	var result strings.Builder
+	result.WriteString("max-age=")
+	result.WriteString(strconv.Itoa(hsts.MaxAge))
+	if hsts.IncludeSubdomains {
+		result.WriteString("; includeSubDomains")
+	}
+	if hsts.Preload {
+		result.WriteString("; preload")
+	}
+	return result.String()
 }

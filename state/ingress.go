@@ -42,7 +42,7 @@ type IngressPathConfig struct {
 	ServicePort *v1Core.ServicePort
 }
 
-// New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening.
+// New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
 func New(ctx context.Context, config *rest.Config, ingressClassName string) *IngressStateManager {
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -75,10 +75,12 @@ func New(ctx context.Context, config *rest.Config, ingressClassName string) *Ing
 	return stateManager
 }
 
+// GetStateChan returns a channel where state updates are delivered. This is the main method used to fetch the current status.
 func (stateManager *IngressStateManager) GetStateChan() <-chan *IngressState {
 	return stateManager.ingressStateChan
 }
 
+// refetchState is used to collect a new state from the Kubernetes API from scratch.
 func (stateManager *IngressStateManager) refetchState() {
 	ingresses, err := stateManager.ingressLister.List(labels.Everything())
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	v1CoreListers "k8s.io/client-go/listers/core/v1"
 )
 
+// getBackendPaths collects for all services referenced in the ingresses the relevant ports and maps the ingress rules to the referenced hosts.
 func getBackendPaths(serviceLister v1CoreListers.ServiceLister, ingresses []*v1Net.Ingress) BackendPaths {
 	result := make(map[string][]*IngressPathConfig)
 	for _, ingress := range ingresses {
@@ -22,7 +23,7 @@ func getBackendPaths(serviceLister v1CoreListers.ServiceLister, ingresses []*v1N
 						Namespace: ingress.Namespace,
 						Config:    &path,
 					}
-					err := getServiceProperties(serviceLister, ingressPathConfig)
+					err := updatePortFromService(serviceLister, ingressPathConfig)
 					if err != nil {
 						log.Warn().Err(err).Msgf("Error getting service port skipping ingress entry.")
 					} else {
@@ -36,7 +37,9 @@ func getBackendPaths(serviceLister v1CoreListers.ServiceLister, ingresses []*v1N
 	return result
 }
 
-func getServiceProperties(serviceLister v1CoreListers.ServiceLister, config *IngressPathConfig) error {
+// updatePortFromService uses the Kubernetes API to fetch the Service status for the service referenced in the ingress config.
+// If this has finished without error the config.ServicePort property is guranteed to be set according to the current service spec.
+func updatePortFromService(serviceLister v1CoreListers.ServiceLister, config *IngressPathConfig) error {
 	serviceName := config.Config.Backend.Service.Name
 	portNumber := config.Config.Backend.Service.Port.Number
 	portName := config.Config.Backend.Service.Port.Name
@@ -64,6 +67,7 @@ func getServiceProperties(serviceLister v1CoreListers.ServiceLister, config *Ing
 	return fmt.Errorf("port name %s specified but not found in service %s", portName, serviceName)
 }
 
+// filterByIngressClass filters the ingresses and only selects those where the ingressClassName matches.
 func filterByIngressClass(ingresses []*v1Net.Ingress, ingressClassName string) []*v1Net.Ingress {
 	n := 0
 	for _, el := range ingresses {

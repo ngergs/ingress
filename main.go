@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -24,56 +27,78 @@ import (
 func main() {
 	setup()
 	var wg sync.WaitGroup
-	sigtermCtx := websrv.SigTermCtx(context.Background())
+	ctx := websrv.SigTermCtx(context.Background())
 
-	k8sconfig, err := setupk8s()
+	reverseProxy, isRdy, err := setupReverseProxy(ctx)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to setup Kubernetes client")
+		log.Fatal().Err(err).Msg("Could not setup reverse proxy")
 	}
 
-	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager := state.New(sigtermCtx, k8sconfig, *ingressClassName)
-	reverseProxy := revproxy.New(ingressStateManager,
-		revproxy.HttpPort(*httpPort),
-		revproxy.HttpsPort(*httpsPort),
-		revproxy.ReadTimeout(time.Duration(*readTimeout)*time.Second),
-		revproxy.WriteTimeout(time.Duration(*writeTimeout)*time.Second),
-		revproxy.BackendTimeout(backendTimeout),
-		revproxy.Optional(revproxy.Hsts(*hstsMaxAge, *hstsIncludeSubdomains, *hstsPreload), *hstsEnabled))
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to setup reverse proxy")
-	}
-	// start listening to state updated and forward them to the reverse proxy
-	go forwardUpdates(ingressStateManager, reverseProxy)
+	middleware, middlewareTLS := setupMiddleware()
+	httpServer := reverseProxy.GetServer(ctx, *httpPort, middleware...)
+	tlsServer := reverseProxy.GetServerTLS(ctx, middlewareTLS...)
+	websrv.AddGracefulShutdown(ctx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
+	websrv.AddGracefulShutdown(ctx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
 
 	errChan := make(chan error)
-	middleware := []websrv.HandlerMiddleware{
-		websrv.Optional(websrv.AccessLog(), *accessLog),
-		websrv.RequestID(),
-	}
-
-	httpServer, err := reverseProxy.GetServerHttp(sigtermCtx, middleware...)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get HTTP server setup")
-	}
-	websrv.AddGracefulShutdown(sigtermCtx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	go func() { errChan <- httpServer.ListenAndServe() }()
-
-	tlsServer, tlsListener, err := reverseProxy.GetServerHttps(sigtermCtx, middleware...)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get HTTPs server setup")
-	}
-	websrv.AddGracefulShutdown(sigtermCtx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
-	go func() { errChan <- tlsServer.Serve(tlsListener) }()
-
+	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, reverseProxy.TlsConfig()) }()
 	if *health {
-		healthServer := getHealthServer(func() bool { return ingressStateManager.Ready })
-		websrv.AddGracefulShutdown(sigtermCtx, &wg, healthServer, time.Duration(*shutdownTimeout)*time.Second)
+		healthServer := getHealthServer(isRdy)
+		websrv.AddGracefulShutdown(ctx, &wg, healthServer, time.Duration(*shutdownTimeout)*time.Second)
 		go func() { errChan <- healthServer.ListenAndServe() }()
 	}
 
 	go logErrors(errChan)
 	wg.Wait()
+}
+
+// listenAndServeTls is a wrapper that starts a net.Listener under the given port
+// and subsequently listens with the provided http.Server to that listener.
+// Blocks until finished just like http.server.ListenAndServe
+func listenAndServeTls(ctx context.Context, port int, server *http.Server, tlsConfig *tls.Config) error {
+	log.Info().Msgf("Listening for HTTPS under container port %d", port)
+	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(port), tlsConfig)
+	if err != nil {
+		return err
+	}
+	return server.Serve(tlsListener)
+}
+
+// setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everyhing for the reverse proxy.
+// This includes automatic updates when the Kubernetes resource status (ingress, service, secrets) changes.
+func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, isRdy func() bool, err error) {
+	k8sconfig, err := setupk8s()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
+	}
+
+	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
+	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
+	reverseProxy = revproxy.New(
+		revproxy.ReadTimeout(time.Duration(*readTimeout)*time.Second),
+		revproxy.WriteTimeout(time.Duration(*writeTimeout)*time.Second),
+		revproxy.BackendTimeout(backendTimeout))
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to setup reverse proxy")
+	}
+	isRdy = func() bool { return ingressStateManager.Ready }
+	// start listening to state updated and forward them to the reverse proxy
+	go forwardUpdates(ingressStateManager, reverseProxy)
+	return
+}
+
+// setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config
+func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []websrv.HandlerMiddleware) {
+	middleware = []websrv.HandlerMiddleware{
+		websrv.Optional(websrv.AccessLog(), *accessLog),
+		websrv.RequestID(),
+	}
+	middlewareTLS = middleware
+	if *hstsEnabled {
+		middlewareTLS = append(middlewareTLS, websrv.Header(&websrv.Config{Headers: map[string]string{"Strict-Transport-Security": hstsConfig.hstsHeader()}}))
+	}
+	return
 }
 
 // setupk8s reads the cluster k8s configuration. If none is available the ~/.kube/config file is used as a fallback for local development.

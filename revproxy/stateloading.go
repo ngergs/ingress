@@ -13,6 +13,31 @@ import (
 	v1Net "k8s.io/api/networking/v1"
 )
 
+// LoadIngressState loads a new ingress state as reverse proxy settings.
+// There is no downtime during this change. The new state is prosessed and then swapped in
+// while supporting concurrent requests.
+// Once applied the reverse proxy is then purely definied by the new state.
+func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
+	backendPathHandlers, err := getBackendPathHandlers(state, proxy.Transport)
+	if err != nil {
+		return err
+	}
+	tlsCerts, err := getTlsCerts(state)
+	if err != nil {
+		return err
+	}
+	newProxyState := &reverseProxyState{
+		backendPathHandlers: backendPathHandlers,
+		tlsCerts:            tlsCerts,
+	}
+	proxy.state.Store(newProxyState)
+	return nil
+}
+
+// getBackendPathHandlers is an internal function which evaluates the ingress state and collects the path rules from it.
+// Furhtermore, also the relevant reverse proxy clients are already setup.
+// Paths are matched based on the principle that exact matches take prevelance over prefix matches.
+// If no exact match has been found the longest matching prefix path takes prevelance.
 func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {
 	pathHandlerMap := make(BackendRouting)
 	for host, pathRules := range state.PathMap {
@@ -51,6 +76,8 @@ func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Tr
 	return pathHandlerMap, nil
 }
 
+// getTlsCerts is an internal function which collects the relevant tls-secrets
+// and also loads the certificates.
 func getTlsCerts(state *state.IngressState) (TlsCerts, error) {
 	tlsCerts := make(map[string]*tls.Certificate)
 	for host, secret := range state.TlsSecrets {
