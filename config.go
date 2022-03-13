@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	stdlog "log"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -62,6 +64,9 @@ func setup() {
 			Preload:           *hstsPreload,
 		}
 	}
+
+	stdlog.SetFlags(0)
+	stdlog.SetOutput(log.Logger)
 }
 
 // hstsHeader returns the HSTS HTTP-Header value
