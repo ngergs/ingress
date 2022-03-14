@@ -6,7 +6,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	v1Core "k8s.io/api/core/v1"
 	v1Net "k8s.io/api/networking/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -28,18 +27,25 @@ type IngressStateManager struct {
 	Ready            bool
 }
 
-type BackendPaths map[string][]*IngressPathConfig // host->ingressPath
-type TlsSecrets map[string]*v1Core.Secret         // host->secret
+type BackendPaths map[string][]*PathConfig // host->ingressPath
+type TlsCerts map[string]*TlsCert          // host->secret
 
-type IngressState struct {
-	PathMap    BackendPaths
-	TlsSecrets TlsSecrets
+type PathConfig struct {
+	PathType    *v1Net.PathType
+	Path        string
+	Namespace   string
+	ServiceName string
+	ServicePort int32
 }
 
-type IngressPathConfig struct {
-	Namespace   string
-	Config      *v1Net.HTTPIngressPath
-	ServicePort *v1Core.ServicePort
+type TlsCert struct {
+	Cert []byte
+	Key  []byte
+}
+
+type IngressState struct {
+	BackendPaths BackendPaths
+	TlsCerts     TlsCerts
 }
 
 // New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
@@ -89,8 +95,8 @@ func (stateManager *IngressStateManager) refetchState() {
 	}
 	ingresses = filterByIngressClass(ingresses, stateManager.ingressClassName)
 	ingressState := &IngressState{
-		PathMap:    getBackendPaths(stateManager.serviceLister, ingresses),
-		TlsSecrets: getTlsSecrets(stateManager.secretLister, ingresses),
+		BackendPaths: getBackendPaths(stateManager.serviceLister, ingresses),
+		TlsCerts:     getTlsSecrets(stateManager.secretLister, ingresses),
 	}
 	stateManager.ingressStateChan <- ingressState
 	stateManager.Ready = true

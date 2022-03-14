@@ -8,14 +8,13 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/ngergs/ingress/state"
 	v1Net "k8s.io/api/networking/v1"
 )
 
+const acmePath = "/.well-known/acme-challenge"
+
 // ReverseProxy implements the main ingress reverse proxy logic
 type ReverseProxy struct {
-	// Config holds the reverse proxye config
-	Config *Config
 	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
 	Transport *http.Transport
 	// state has type *reverseProxyState and holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
@@ -23,7 +22,7 @@ type ReverseProxy struct {
 }
 
 // BackendRouting contains a mopping of host name to the relevant backend path handlers in order of priority
-type BackendRouting map[string][]*backendPathHandler
+type BackendRouting map[string]backendPathHandlers
 
 // TlsCerts contains a mapping of host name to the relevant TLS certificates
 type TlsCerts map[string]*tls.Certificate
@@ -34,10 +33,27 @@ type reverseProxyState struct {
 	tlsCerts            TlsCerts
 }
 
+// backendPathHandlers is a slice of backendPathHandler
+type backendPathHandlers []*backendPathHandler
+
 // backendPathHandler holds the ingress PathRule for path matching as well as the corresponding reverse proxy handler for the given backend path.
 type backendPathHandler struct {
-	PathRule     *state.IngressPathConfig
+	PathType     *v1Net.PathType
+	Path         string
 	ProxyHandler http.Handler
+}
+
+// match returns the matching backendPathHandler for the given path argument if one is present
+func (pathHandlers *backendPathHandlers) match(path string) (pathHandler *backendPathHandler, ok bool) {
+	for _, pathHandler := range *pathHandlers {
+		if *pathHandler.PathType == v1Net.PathTypeExact && path == pathHandler.Path {
+			return pathHandler, true
+		}
+		if strings.HasPrefix(path, pathHandler.Path) {
+			return pathHandler, true
+		}
+	}
+	return nil, false
 }
 
 // New setups a new reverse proxy. To start it see methods GetServerHttp and GetServerHttps.
@@ -49,7 +65,7 @@ func New(options ...ConfigOption) *ReverseProxy {
 	transport.DialContext = (&net.Dialer{
 		Timeout: config.BackendTimeout,
 	}).DialContext
-	reverseProxy := &ReverseProxy{Config: config, Transport: transport}
+	reverseProxy := &ReverseProxy{Transport: transport}
 	return reverseProxy
 }
 
@@ -104,11 +120,10 @@ func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 			return // no response if host does not match
 		}
 		// first match is selected
-		for _, pathHandler := range pathHandlers {
-			if matches(r.URL.Path, pathHandler.PathRule) {
-				pathHandler.ProxyHandler.ServeHTTP(w, r)
-				return
-			}
+		pathHandler, ok := pathHandlers.match(r.URL.Path)
+		if ok {
+			pathHandler.ProxyHandler.ServeHTTP(w, r)
+			return
 		}
 		w.WriteHeader(http.StatusNotFound)
 	})
@@ -129,23 +144,19 @@ func (proxy *ReverseProxy) GetHttpsRedirectHandler() http.Handler {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge") {
-			for _, pathHandler := range pathHandlers {
-				if matches(r.URL.Path, pathHandler.PathRule) {
-					pathHandler.ProxyHandler.ServeHTTP(w, r)
-					return
-				}
+		if strings.HasPrefix(r.URL.Path, acmePath) {
+			pathHandler, ok := pathHandlers.match(r.URL.Path)
+			if ok {
+				pathHandler.ProxyHandler.ServeHTTP(w, r)
+				return
 			}
 		}
-		w.Header().Set("Location", "https://"+r.Host+r.URL.Path)
-		w.WriteHeader(http.StatusPermanentRedirect)
+		_, ok = pathHandlers.match(r.URL.Path)
+		if ok {
+			w.Header().Set("Location", "https://"+r.Host+r.URL.Path)
+			w.WriteHeader(http.StatusPermanentRedirect)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
 	})
-}
-
-// matches returns if the path satisfies the pathRules. The ImplementationSpecific PathType is evaluated as Prefix PathType.
-func matches(path string, pathRule *state.IngressPathConfig) bool {
-	if *pathRule.Config.PathType == v1Net.PathTypeExact {
-		return path == pathRule.Config.Path
-	}
-	return strings.HasPrefix(path, pathRule.Config.Path)
 }

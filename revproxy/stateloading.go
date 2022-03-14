@@ -40,36 +40,37 @@ func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
 // If no exact match has been found the longest matching prefix path takes prevelance.
 func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {
 	pathHandlerMap := make(BackendRouting)
-	for host, pathRules := range state.PathMap {
+	for host, pathRules := range state.BackendPaths {
 		proxies := make([]*backendPathHandler, len(pathRules))
 		for i, pathRule := range pathRules {
 
-			rawUrl := "http://" + pathRule.Config.Backend.Service.Name +
+			rawUrl := "http://" + pathRule.ServiceName +
 				"." + pathRule.Namespace +
 				".svc.cluster.local" +
-				":" + strconv.FormatInt(int64(pathRule.ServicePort.Port), 10)
+				":" + strconv.FormatInt(int64(pathRule.ServicePort), 10)
 			url, err := url.ParseRequestURI(rawUrl)
 			if err != nil {
 				return nil, err
 			}
-			log.Info().Msgf("Loaded proxy backend path %s for host %s and path %s", url.String(), host, pathRule.Config.Path)
+			log.Info().Msgf("Loaded proxy backend path %s for host %s and path %s", url.String(), host, pathRule.Path)
 
 			revProxy := httputil.NewSingleHostReverseProxy(url)
 			revProxy.Transport = backendTransport.Clone()
 			proxies[i] = &backendPathHandler{
-				PathRule:     pathRule,
+				PathType:     pathRule.PathType,
+				Path:         pathRule.Path,
 				ProxyHandler: revProxy,
 			}
 		}
 		// exact type match first, then the longest path
 		sort.Slice(proxies, func(i int, j int) bool {
-			if *proxies[i].PathRule.Config.PathType == v1Net.PathTypeExact {
+			if *proxies[i].PathType == v1Net.PathTypeExact {
 				return true
 			}
-			if *proxies[j].PathRule.Config.PathType == v1Net.PathTypeExact {
+			if *proxies[j].PathType == v1Net.PathTypeExact {
 				return false
 			}
-			return len(proxies[i].PathRule.Config.Path) > len(proxies[j].PathRule.Config.Path)
+			return len(proxies[i].Path) > len(proxies[j].Path)
 		})
 		pathHandlerMap[host] = proxies
 	}
@@ -80,8 +81,8 @@ func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Tr
 // and also loads the certificates.
 func getTlsCerts(state *state.IngressState) (TlsCerts, error) {
 	tlsCerts := make(map[string]*tls.Certificate)
-	for host, secret := range state.TlsSecrets {
-		cert, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
+	for host, secret := range state.TlsCerts {
+		cert, err := tls.X509KeyPair(secret.Cert, secret.Key)
 		if err != nil {
 			return nil, err
 		}

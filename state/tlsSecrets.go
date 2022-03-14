@@ -9,8 +9,8 @@ import (
 
 // getTlsSecrets fetches for all secrets that are referenced in the ingressed the relevant kubernetes.io/tls secrets from the Kubernetes API
 // and maps them to the hostname from the ingress spec.
-func getTlsSecrets(secretLister v1CoreListers.SecretLister, ingresses []*v1Net.Ingress) TlsSecrets {
-	result := make(map[string]*v1Core.Secret)
+func getTlsSecrets(secretLister v1CoreListers.SecretLister, ingresses []*v1Net.Ingress) TlsCerts {
+	result := make(map[string]*TlsCert)
 	for _, ingress := range ingresses {
 		for _, rule := range ingress.Spec.TLS {
 			secret, err := secretLister.Secrets(ingress.Namespace).Get(rule.SecretName)
@@ -24,7 +24,10 @@ func getTlsSecrets(secretLister v1CoreListers.SecretLister, ingresses []*v1Net.I
 					secret.Type, secret.Name, secret.Namespace)
 			}
 			for _, host := range rule.Hosts {
-				result[host] = secret
+				result[host] = &TlsCert{
+					Cert: secret.Data["tls.crt"],
+					Key:  secret.Data["tls.key"],
+				}
 			}
 		}
 	}
