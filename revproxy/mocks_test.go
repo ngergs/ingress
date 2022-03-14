@@ -29,12 +29,6 @@ func (w *mockResponseWriter) WriteHeader(statusCode int) {
 	w.mock.Called(statusCode)
 }
 
-func (w *mockResponseWriter) mockStatusWrite(expectedtStatus int) {
-	var responseHeader http.Header = make(map[string][]string)
-	w.mock.On("Header").Return(responseHeader)
-	w.mock.On("WriteHeader", expectedtStatus)
-}
-
 type mockHandler struct {
 	w             http.ResponseWriter
 	r             *http.Request
