@@ -7,14 +7,13 @@ import (
 	"github.com/rs/zerolog/log"
 
 	v1Net "k8s.io/api/networking/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	v1CoreListers "k8s.io/client-go/listers/core/v1"
 	v1NetListers "k8s.io/client-go/listers/networking/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -24,7 +23,6 @@ type IngressStateManager struct {
 	secretLister     v1CoreListers.SecretLister
 	ingressClassName string
 	ingressStateChan chan *IngressState
-	Ready            bool
 }
 
 type BackendPaths map[string][]*PathConfig // host->ingressPath
@@ -49,15 +47,12 @@ type IngressState struct {
 }
 
 // New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
-func New(ctx context.Context, config *rest.Config, ingressClassName string) *IngressStateManager {
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatal().Err(err).Msg("error setting up k8s clients")
-	}
+func New(ctx context.Context, client kubernetes.Interface, ingressClassName string, options ...ConfigOption) *IngressStateManager {
+	config := defaultConfig.clone().applyOptions(options...)
 
 	factoryGeneral := informers.NewSharedInformerFactory(client, 0)
 	factorySecrets := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithTweakListOptions(
-		func(list *v1.ListOptions) {
+		func(list *v1Meta.ListOptions) {
 			list.FieldSelector = fields.OneTermEqualSelector("type", "kubernetes.io/tls").String()
 		}))
 	ingressInformer := factoryGeneral.Networking().V1().Ingresses()
@@ -70,11 +65,13 @@ func New(ctx context.Context, config *rest.Config, ingressClassName string) *Ing
 		secretLister:     secretInformer.Lister(),
 		ingressClassName: ingressClassName,
 		ingressStateChan: make(chan *IngressState),
-		Ready:            false,
 	}
 
 	// Start listening to relevant API objects for changes
-	informHandler := debounce(ctx, time.Duration(1)*time.Second, stateManager.refetchState)
+	informHandler := stateManager.refetchState
+	if config.DebounceDuration != time.Duration(0) {
+		informHandler = debounce(ctx, config.DebounceDuration, informHandler)
+	}
 	go stateManager.startInformer(ctx, ingressInformer.Informer(), informHandler)
 	go stateManager.startInformer(ctx, serviceInformer.Informer(), informHandler)
 	go stateManager.startInformer(ctx, secretInformer.Informer(), informHandler)
@@ -99,7 +96,6 @@ func (stateManager *IngressStateManager) refetchState() {
 		TlsCerts:     getTlsSecrets(stateManager.secretLister, ingresses),
 	}
 	stateManager.ingressStateChan <- ingressState
-	stateManager.Ready = true
 }
 
 func (stateManager *IngressStateManager) startInformer(ctx context.Context, informer cache.SharedIndexInformer, handler func()) {

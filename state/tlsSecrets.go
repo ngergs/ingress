@@ -22,6 +22,7 @@ func getTlsSecrets(secretLister v1CoreListers.SecretLister, ingresses []*v1Net.I
 			if secret.Type != v1Core.SecretTypeTLS {
 				log.Warn().Msgf("Secret type missmatch, required kubernetes.io/tls, but found %s for secret %s in namespace %s, skipping entry.",
 					secret.Type, secret.Name, secret.Namespace)
+				continue
 			}
 			for _, host := range rule.Hosts {
 				result[host] = &TlsCert{

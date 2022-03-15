@@ -14,6 +14,7 @@ import (
 
 	websrv "github.com/ngergs/websrv/server"
 
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -25,7 +26,7 @@ func main() {
 	var wg sync.WaitGroup
 	ctx := websrv.SigTermCtx(context.Background())
 
-	reverseProxy, isRdy, err := setupReverseProxy(ctx)
+	reverseProxy, err := setupReverseProxy(ctx)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not setup reverse proxy")
 	}
@@ -44,7 +45,7 @@ func main() {
 	}()
 	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, reverseProxy.TlsConfig()) }()
 	if *health {
-		healthServer := getHealthServer(isRdy)
+		healthServer := getHealthServer()
 		websrv.AddGracefulShutdown(ctx, &wg, healthServer, time.Duration(*shutdownTimeout)*time.Second)
 		go func() { errChan <- healthServer.ListenAndServe() }()
 	}
@@ -55,23 +56,27 @@ func main() {
 
 // setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everyhing for the reverse proxy.
 // This includes automatic updates when the Kubernetes resource status (ingress, service, secrets) changes.
-func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, isRdy func() bool, err error) {
+func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, err error) {
 	k8sconfig, err := setupk8s()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
+		return nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
+	}
+	k8sclient, err := kubernetes.NewForConfig(k8sconfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg("error setting up k8s clients")
 	}
 
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager := state.New(ctx, k8sconfig, *ingressClassName)
+	ingressStateManager := state.New(ctx, k8sclient, *ingressClassName)
 	reverseProxy = revproxy.New(
 		revproxy.BackendTimeout(backendTimeout))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to setup reverse proxy")
 	}
-	isRdy = func() bool { return ingressStateManager.Ready }
+
 	// start listening to state updated and forward them to the reverse proxy
 	go forwardUpdates(ingressStateManager, reverseProxy)
-	return
+	return reverseProxy, nil
 }
 
 // setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config

@@ -1,14 +1,12 @@
 package revproxy
 
 import (
-	"crypto/rand"
 	"crypto/tls"
 	"net/http"
 	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	v1Net "k8s.io/api/networking/v1"
 )
 
 func TestTlsConfigMatch(t *testing.T) {
@@ -96,39 +94,4 @@ func TestHandlerStateNotRdy(t *testing.T) {
 	reverseProxy := &ReverseProxy{}
 	internalTestHandlerStateNotRdy(t, reverseProxy.GetHandlerProxying())
 	internalTestHandlerStateNotRdy(t, reverseProxy.GetHttpsRedirectHandler())
-}
-
-func getDummyReverseProxy(t *testing.T, handler http.Handler) *ReverseProxy {
-	pathType := v1Net.PathTypePrefix
-	exact := v1Net.PathTypeExact
-	pathHandler := &backendPathHandler{
-		PathType:     &pathType,
-		Path:         prefixPath,
-		ProxyHandler: handler,
-	}
-	acmeHandler := &backendPathHandler{
-		PathType:     &exact,
-		Path:         acmePath,
-		ProxyHandler: handler,
-	}
-	pathMap := map[string]backendPathHandlers{
-		dummyHost: {pathHandler, acmeHandler},
-	}
-
-	var certData [20]byte
-	_, err := rand.Read(certData[:])
-	assert.Nil(t, err)
-	cert := tls.Certificate{
-		Certificate: [][]byte{certData[:]},
-	}
-	certMap := map[string]*tls.Certificate{
-		dummyHost: &cert,
-	}
-
-	reverseProxy := New()
-	reverseProxy.state.Store(&reverseProxyState{
-		backendPathHandlers: pathMap,
-		tlsCerts:            certMap,
-	})
-	return reverseProxy
 }

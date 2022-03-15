@@ -58,8 +58,7 @@ func (pathHandlers *backendPathHandlers) match(path string) (pathHandler *backen
 
 // New setups a new reverse proxy. To start it see methods GetServerHttp and GetServerHttps.
 func New(options ...ConfigOption) *ReverseProxy {
-	config := defaultConfig.clone()
-	config.applyOptions(options...)
+	config := defaultConfig.clone().applyOptions(options...)
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = (&net.Dialer{

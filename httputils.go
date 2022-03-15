@@ -43,10 +43,10 @@ func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware)
 	return root
 }
 
-// startHealthserver initializes the conditional health server.
-func getHealthServer(condition func() bool) *http.Server {
+// startHealthserver initializes the health server.
+func getHealthServer() *http.Server {
 	healthServer := websrv.Build(*healthPort,
-		websrv.HealthCheckConditionalHandler(condition),
+		websrv.HealthCheckHandler(),
 		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
 	)
 	log.Info().Msgf("Starting healthcheck server on port %d", *healthPort)

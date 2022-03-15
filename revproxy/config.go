@@ -6,6 +6,8 @@ import (
 
 // Config is a data structure that holds the config options for the reverse proxy
 type Config struct {
+	//BackendTimeout is timeout for each proxied request to the respective backend.
+	// Defaults to 20 seconds.
 	BackendTimeout time.Duration
 }
 
@@ -24,10 +26,12 @@ func BackendTimeout(timeout time.Duration) ConfigOption {
 }
 
 // applyOptions applied the given variadic options to the config.
-func (config *Config) applyOptions(options ...ConfigOption) {
+// the argument config option is modified, the returned value is only for ease of use.
+func (config *Config) applyOptions(options ...ConfigOption) *Config {
 	for _, option := range options {
 		option(config)
 	}
+	return config
 }
 
 // clone creates a deep copy of the config
