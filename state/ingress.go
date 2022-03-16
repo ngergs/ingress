@@ -72,9 +72,9 @@ func New(ctx context.Context, client kubernetes.Interface, ingressClassName stri
 	if config.DebounceDuration != time.Duration(0) {
 		informHandler = debounce(ctx, config.DebounceDuration, informHandler)
 	}
-	go stateManager.startInformer(ctx, ingressInformer.Informer(), informHandler)
-	go stateManager.startInformer(ctx, serviceInformer.Informer(), informHandler)
-	go stateManager.startInformer(ctx, secretInformer.Informer(), informHandler)
+	go stateManager.startInformer(ctx, ingressInformer.Informer(), true, informHandler)
+	go stateManager.startInformer(ctx, serviceInformer.Informer(), true, informHandler)
+	go stateManager.startInformer(ctx, secretInformer.Informer(), false, informHandler)
 	return stateManager
 }
 
@@ -98,18 +98,27 @@ func (stateManager *IngressStateManager) refetchState() {
 	stateManager.ingressStateChan <- ingressState
 }
 
-func (stateManager *IngressStateManager) startInformer(ctx context.Context, informer cache.SharedIndexInformer, handler func()) {
+// startInformer starts the given informer with the  general handler is being called for AddFunc, UpdateFunc, DeleteFunc.
+// The argument is not passed, as we reconstruct the general state anyhow.
+// The context can be used to cancel the informer.
+func (stateManager *IngressStateManager) startInformer(ctx context.Context, informer cache.SharedIndexInformer, logDebug bool, handler func()) {
 	wrappedHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			log.Debug().Msgf("Received k8s add update %v", obj)
+			if logDebug {
+				log.Debug().Msgf("Received k8s add update %v", obj)
+			}
 			handler()
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			log.Debug().Msgf("Received k8s update, new: %v, old: %v", oldObj, newObj)
+			if logDebug {
+				log.Debug().Msgf("Received k8s update, new: %v, old: %v", oldObj, newObj)
+			}
 			handler()
 		},
 		DeleteFunc: func(obj interface{}) {
-			log.Debug().Msgf("Received k8s delete update %v", obj)
+			if logDebug {
+				log.Debug().Msgf("Received k8s delete update %v", obj)
+			}
 			handler()
 		},
 	}

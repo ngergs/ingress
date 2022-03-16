@@ -31,6 +31,7 @@ func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
 		tlsCerts:            tlsCerts,
 	}
 	proxy.state.Store(newProxyState)
+	log.Info().Msg("Reverse proxy state updated")
 	return nil
 }
 
