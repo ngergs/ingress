@@ -1,7 +1,7 @@
 # ingress
 
 A basic ingress implementation. Started as a hobby project the result is now a small ingress that can
-handle basic cases.
+handle basic cases. However, it is still more of educational value to see a basic ingress without much bells and whistles.
 
 ## Usage
 
