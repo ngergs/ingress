@@ -77,30 +77,20 @@ func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
 	return result.(*reverseProxyState), true
 }
 
-// TlsConfig returns the tls.config for the reverse proxy. Should be used with tls.Listener and the GetHandlerTLS method.
-// The TLS settings can be modified but the GetCertificate field of the returned struct has to be kept unchanges for this setup to work.
-func (proxy *ReverseProxy) TlsConfig() *tls.Config {
-	return &tls.Config{
-		MinVersion:       tls.VersionTLS12,
-		CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-		},
-		NextProtos: []string{"h2", "http/1.1"},
-		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			state, ok := proxy.getState()
-			if !ok {
-				return nil, fmt.Errorf("state not initialized")
-			}
-			cert, ok := state.tlsCerts[hello.ServerName]
-			if !ok {
-				return nil, fmt.Errorf("no certificate found for servername %s", hello.ServerName)
-			}
-			return cert, nil
-		},
+// GetCertificateFunc returns a function for the tls.Config.GetCertificate callback.
+// Supposedbe used with tls.Listener.
+func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		state, ok := proxy.getState()
+		if !ok {
+			return nil, fmt.Errorf("state not initialized")
+		}
+		cert, ok := state.tlsCerts[hello.ServerName]
+
+		if !ok {
+			return nil, fmt.Errorf("no certificate found for servername %s", hello.ServerName)
+		}
+		return cert, nil
 	}
 }
 

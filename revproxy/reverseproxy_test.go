@@ -12,7 +12,7 @@ import (
 func TestTlsConfigMatch(t *testing.T) {
 	reverseProxy := getDummyReverseProxy(t, nil)
 	expectedCert := reverseProxy.state.Load().(*reverseProxyState).tlsCerts[dummyHost]
-	receivedCert, err := reverseProxy.TlsConfig().GetCertificate(&tls.ClientHelloInfo{
+	receivedCert, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})
 	assert.Nil(t, err)
@@ -21,7 +21,7 @@ func TestTlsConfigMatch(t *testing.T) {
 
 func TestTlsConfigMissMatch(t *testing.T) {
 	reverseProxy := getDummyReverseProxy(t, nil)
-	_, err := reverseProxy.TlsConfig().GetCertificate(&tls.ClientHelloInfo{
+	_, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: "none",
 	})
 	assert.NotNil(t, err)
@@ -29,7 +29,7 @@ func TestTlsConfigMissMatch(t *testing.T) {
 
 func TestTlsConfigStateNotRdy(t *testing.T) {
 	reverseProxy := &ReverseProxy{}
-	_, err := reverseProxy.TlsConfig().GetCertificate(&tls.ClientHelloInfo{
+	_, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})
 	assert.NotNil(t, err)
