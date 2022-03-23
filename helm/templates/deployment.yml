@@ -42,6 +42,10 @@ spec:
               containerPort: 8443
               hostPort: 443
               protocol: TCP
+            - name: quic
+              containerPort: 8444
+              hostPort: 443
+              protocol: UDP
             - name: http
               containerPort: 8080
               hostPort: 80
