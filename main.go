@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,15 +100,29 @@ func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []w
 	if *hstsEnabled {
 		headers["Strict-Transport-Security"] = hstsConfig.hstsHeader()
 	}
-	altSvc := "h2=\":" + strconv.Itoa(*httpsPort) + "\""
-	if *http3Enabled {
-		altSvc = "h3=\":" + strconv.Itoa(*http3Port) + "\"; " + altSvc
+	altSvc := getAltSvcHeader()
+	if altSvc != "" {
+		headers["Alt-Svc"] = altSvc
 	}
-	headers["Alt-Svc"] = altSvc
 	middlewareTLS = append([]websrv.HandlerMiddleware{
 		websrv.Header(&websrv.Config{Headers: headers}),
 	}, middlewareTLS...)
 	return
+}
+
+// getAltSvcHeader returns the Alt-Svc HTTP-Header that advertises HTTP2 and HTTP3
+func getAltSvcHeader() string {
+	var sb strings.Builder
+	if *http3Enabled && *http3AltSvcPort != 0 {
+		sb.WriteString("h3=\":" + strconv.Itoa(*http3AltSvcPort) + "\", ")
+	}
+	if *http2AltSvcPort != 0 {
+		sb.WriteString("h2=\":" + strconv.Itoa(*http2AltSvcPort) + "\", ")
+	}
+	if sb.Len() == 0 {
+		return ""
+	}
+	return sb.String()[:sb.Len()-2]
 }
 
 // setupk8s reads the cluster k8s configuration. If none is available the ~/.kube/config file is used as a fallback for local development.
