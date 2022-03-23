@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,12 +39,20 @@ func main() {
 	websrv.AddGracefulShutdown(ctx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	websrv.AddGracefulShutdown(ctx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
 
+	tlsConfig := getTlsConfig()
+	tlsConfig.GetCertificate = reverseProxy.GetCertificateFunc()
+
 	errChan := make(chan error)
 	go func() {
-		log.Info().Msgf("Listening for HTTP under container port %s", httpServer.Addr[1:])
+		log.Info().Msgf("Listening for HTTP under container port tcp/%s", httpServer.Addr[1:])
 		errChan <- httpServer.ListenAndServe()
 	}()
-	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, reverseProxy.TlsConfig()) }()
+	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, tlsConfig) }()
+	if *http3Enabled {
+		quicServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
+		websrv.AddGracefulShutdown(ctx, &wg, quicServer, time.Duration(*shutdownTimeout)*time.Second)
+		go func() { errChan <- listenAndServeQuic(ctx, *http3Port, quicServer, tlsConfig) }()
+	}
 	if *health {
 		healthServer := getHealthServer()
 		websrv.AddGracefulShutdown(ctx, &wg, healthServer, time.Duration(*shutdownTimeout)*time.Second)
@@ -86,11 +95,18 @@ func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []w
 		websrv.RequestID(),
 	}
 	middlewareTLS = middleware
+	headers := make(map[string]string)
 	if *hstsEnabled {
-		middlewareTLS = append([]websrv.HandlerMiddleware{
-			websrv.Header(&websrv.Config{Headers: map[string]string{"Strict-Transport-Security": hstsConfig.hstsHeader()}}),
-		}, middlewareTLS...)
+		headers["Strict-Transport-Security"] = hstsConfig.hstsHeader()
 	}
+	altSvc := "h2=\":" + strconv.Itoa(*httpsPort) + "\""
+	if *http3Enabled {
+		altSvc = "h3=\":" + strconv.Itoa(*http3Port) + "\"; " + altSvc
+	}
+	headers["Alt-Svc"] = altSvc
+	middlewareTLS = append([]websrv.HandlerMiddleware{
+		websrv.Header(&websrv.Config{Headers: headers}),
+	}, middlewareTLS...)
 	return
 }
 

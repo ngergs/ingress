@@ -19,7 +19,7 @@ go build
 ## Usage
 The path to this folder has to be provided as command line argument. There are a number of various optional settings.
 ```
-Usage: ./ingress {options} [target-path]
+Usage: ./ingress {options}
 Options:
   -access-log
         Prints an access log. (default true)
@@ -30,7 +30,7 @@ Options:
   -health-access-log
         Prints an access log for the health check endpoint to stdout.
   -health-port int
-        Different port under which the health check endpoint runs. (default 8081)
+        TCP-Port under which the health check endpoint runs. (default 8081)
   -help
         Prints the help.
   -hsts
@@ -42,9 +42,13 @@ Options:
   -hsts-subdomains
         Whether HSTS if activated should add the includeSubdomains directive. (default true)
   -http-port int
-        Port for the HTTP endpoint (default 8080)
+        TCP-Port for the HTTP endpoint (default 8080)
+  -http3
+        Whether http3 is enabled
+  -http3-port int
+        UDP-Port for the HTTP3 endpoint. Note that Kubernetes merges ContainerPort configs using only the port (not combined with the protocol) as key. (default 8444)
   -https-port int
-        Port for the HTTPs endpoint (default 8443)
+        TCP-Port for the HTTPs endpoint (default 8443)
   -ingress-class-name string
         Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated. (default "ingress")
   -pretty
@@ -55,4 +59,5 @@ Options:
         Timeout to graceful shutdown the reverse proxy in seconds. (default 10)
   -write-timeout int
         Timeout to write the complete response in seconds. (default 10)
+
 ```
