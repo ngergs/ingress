@@ -1,44 +1,23 @@
 replicaCount: 1
-ingressClassName: nginx-kubeip
+nodeSelector: 
+ingressClassName: 
 issuer:
-  email: niklas@ngergs.de
+  email: 
 domains:
-  - names:
-      common_name: ngergs.de
-      subject_alternative_names:
-        - www.ngergs.de
-    letsencrypt_prod: true
-    robots:
-      entries:
-        - user_agent: "Googlebot"
-          disallow: 
-          allow:
-            - /
-        - user_agent: "*"
-          disallow: 
-            - /
-          allow:
-      sitemap:
-      replicaCount: 1
-  - names:
-      common_name: archive.ngergs.de
-    letsencrypt_prod: true
-    robots:
-      entries:
-        - user_agent: "*"
-          disallow: 
-            - /
-          allow:
-      sitemap:
-      replicaCount: 1
-  - names:
-      common_name: mta-sts.ngergs.de
-    letsencrypt_prod: true
-    robots:
-      entries:
-        - user_agent: "*"
-          disallow: 
-            - /
-          allow:
-      sitemap:
-      replicaCount: 1
+#  - names:
+#      common_name: 
+#      subject_alternative_names:
+#        - 
+#    letsencrypt_prod: true
+#    robots:
+#      entries:
+#        - user_agent: "Googlebot"
+#          disallow: 
+#          allow:
+#            - /
+#        - user_agent: "*"
+#          disallow: 
+#            - /
+#          allow:
+#      sitemap:
+#      replicaCount: 1

@@ -15,8 +15,10 @@ spec:
         app.kubernetes.io/name: ingress
     spec:
       serviceAccountName: ingress
+      {{- with .Values.nodeSelector }}
       nodeSelector:
-        cloud.google.com/gke-nodepool: homepage-ngergs-gke-ingress-node-pool
+        cloud.google.com/gke-nodepool: {{ . }}
+      {{- end }}
       containers:
         - name: ingress
           image: ngergs/ingress

@@ -4,7 +4,7 @@ For the given host names a master ingress configuration without backend routing 
 As cert-manager is used for certificate handling, it has to be installed before this chart can be deployed. Like so (assumming the namespace ingress exists):
 ```
 helm install cert-manager jetstack/cert-manager -f values-cert-manager.yml
-helm install ingress . -n ingress -f values.yml -f ../../terraform/out/helm_values.yml
+helm install ingress . -n ingress -f values.yml
 ```
 
 ## Variables
