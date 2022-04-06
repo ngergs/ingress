@@ -17,6 +17,9 @@ spec:
         app.kubernetes.io/name: robots-{{ .names.common_name }}
     spec:
       serviceAccountName: robots
+      {{- with $.Values.nodeSelector.robots }}
+      nodeSelector: {{ . | toYaml | nindent 8 }}
+      {{- end }}
       containers:
         - name: imprint
           image: ngergs/websrv

@@ -1,5 +1,9 @@
 replicaCount: 1
-nodeSelector: 
+nodeSelector:
+#  ingress:
+#    cloud.google.com/gke-nodepool:
+#  robots:
+#    cloud.google.com/gke-nodepool:
 ingressClassName: 
 issuer:
   email: 
