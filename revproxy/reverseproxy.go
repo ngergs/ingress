@@ -3,12 +3,10 @@ package revproxy
 import (
 	"crypto/tls"
 	"fmt"
+	v1Net "k8s.io/api/networking/v1"
 	"net"
 	"net/http"
 	"strings"
-	"sync/atomic"
-
-	v1Net "k8s.io/api/networking/v1"
 )
 
 const acmePath = "/.well-known/acme-challenge"
@@ -17,8 +15,8 @@ const acmePath = "/.well-known/acme-challenge"
 type ReverseProxy struct {
 	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
 	Transport *http.Transport
-	// state has type *reverseProxyState and holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
-	state atomic.Value
+	// state holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
+	state atomicVal[*reverseProxyState]
 }
 
 // BackendRouting contains a mopping of host name to the relevant backend path handlers in order of priority
@@ -68,20 +66,11 @@ func New(options ...ConfigOption) *ReverseProxy {
 	return reverseProxy
 }
 
-// getState returns the given state and whether the state is ok. The returned state is nil if ok is false.
-func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
-	result := proxy.state.Load()
-	if result == nil {
-		return nil, false
-	}
-	return result.(*reverseProxyState), true
-}
-
 // GetCertificateFunc returns a function for the tls.Config.GetCertificate callback.
 // Supposed to be used with tls.Listener.
 func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		state, ok := proxy.getState()
+		state, ok := proxy.state.Load()
 		if !ok {
 			return nil, fmt.Errorf("state not initialized")
 		}
@@ -98,7 +87,7 @@ func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo)
 // A TLS-terminating setup should use this for HTTPS only.
 func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state, ok := proxy.getState()
+		state, ok := proxy.state.Load()
 		if !ok {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -123,7 +112,7 @@ func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 // Paths that start with  "/.well-known/acme-challenge" are stil reverse proxied to the backend for ACME challenges.
 func (proxy *ReverseProxy) GetHttpsRedirectHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state, ok := proxy.getState()
+		state, ok := proxy.state.Load()
 		if !ok {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return

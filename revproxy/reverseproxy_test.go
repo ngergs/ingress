@@ -11,7 +11,9 @@ import (
 
 func TestTlsConfigMatch(t *testing.T) {
 	reverseProxy := getDummyReverseProxy(t, nil)
-	expectedCert := reverseProxy.state.Load().(*reverseProxyState).tlsCerts[dummyHost]
+	state, ok := reverseProxy.state.Load()
+	assert.True(t, ok)
+	expectedCert := state.tlsCerts[dummyHost]
 	receivedCert, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})

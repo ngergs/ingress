@@ -36,7 +36,7 @@ func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
 }
 
 // getBackendPathHandlers is an internal function which evaluates the ingress state and collects the path rules from it.
-// Furhtermore, also the relevant reverse proxy clients are already setup.
+// Furthermore, also the relevant reverse proxy clients are already setup.
 // Paths are matched based on the principle that exact matches take prevelance over prefix matches.
 // If no exact match has been found the longest matching prefix path takes prevelance.
 func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {

@@ -11,24 +11,24 @@ import (
 )
 
 func TestLoadIngressState(t *testing.T) {
-	state, cert := getValidDummyState(t)
+	inputState, cert := getValidDummyState(t)
 	reverseProxy := New()
-	err := reverseProxy.LoadIngressState(state)
+	err := reverseProxy.LoadIngressState(inputState)
 	assert.Nil(t, err)
-	proxyState := reverseProxy.state.Load().(*reverseProxyState)
-
+	proxyState, ok := reverseProxy.state.Load()
+	assert.True(t, ok)
 	assert.Equal(t, cert, proxyState.tlsCerts[dummyHost])
 
-	// expectedOrder in proxystate is 2->0->1 as exact paths take precedence over prefixes and the longest prefixes wins against other prefixes
-	assertEqual(t, state.BackendPaths[dummyHost][0], proxyState.backendPathHandlers[dummyHost][2])
-	assertEqual(t, state.BackendPaths[dummyHost][1], proxyState.backendPathHandlers[dummyHost][0])
-	assertEqual(t, state.BackendPaths[dummyHost][2], proxyState.backendPathHandlers[dummyHost][1])
+	// expectedOrder in proxyState is 2->0->1 as exact paths take precedence over prefixes and the longest prefixes wins against other prefixes
+	assertEqual(t, inputState.BackendPaths[dummyHost][0], proxyState.backendPathHandlers[dummyHost][2])
+	assertEqual(t, inputState.BackendPaths[dummyHost][1], proxyState.backendPathHandlers[dummyHost][0])
+	assertEqual(t, inputState.BackendPaths[dummyHost][2], proxyState.backendPathHandlers[dummyHost][1])
 }
 
 func TestLoadIngressStateCertError(t *testing.T) {
-	state := getDummyState(nil, nil)
+	inputState := getDummyState(nil, nil)
 	reverseProxy := New()
-	err := reverseProxy.LoadIngressState(state)
+	err := reverseProxy.LoadIngressState(inputState)
 	assert.NotNil(t, err)
 }
 
