@@ -1,0 +1,27 @@
+replicaCount: 1
+nodeSelector:
+#  ingress:
+#    cloud.google.com/gke-nodepool:
+#  robots:
+#    cloud.google.com/gke-nodepool:
+ingressClassName: custom-ingress
+issuer:
+  email:
+domains:
+#  - names:
+#      common_name: todo
+#      subject_alternative_names:
+#        - www.todo
+#    letsencrypt_prod: false
+#    robots:
+#      entries:
+#        - user_agent: "Googlebot"
+#          disallow: 
+#          allow:
+#            - /
+#        - user_agent: "*"
+#          disallow: 
+#            - /
+#          allow:
+#      sitemap:
+#      replicaCount: 1

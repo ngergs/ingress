@@ -35,7 +35,7 @@ func main() {
 
 	middleware, middlewareTLS := setupMiddleware()
 	httpServer := getServer(httpPort, reverseProxy.GetHttpsRedirectHandler(), middleware...)
-	// port is defined below via listenAndServeTls. Therefore do not set it here to avoid the illusion of it being of relevance here.
+	// port is defined below via listenAndServeTls. Therefore, do not set it here to avoid the illusion of it being of relevance here.
 	tlsServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
 	websrv.AddGracefulShutdown(ctx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	websrv.AddGracefulShutdown(ctx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)

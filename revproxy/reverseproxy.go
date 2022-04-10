@@ -78,7 +78,7 @@ func (proxy *ReverseProxy) getState() (state *reverseProxyState, ok bool) {
 }
 
 // GetCertificateFunc returns a function for the tls.Config.GetCertificate callback.
-// Supposedbe used with tls.Listener.
+// Supposed to be used with tls.Listener.
 func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		state, ok := proxy.getState()

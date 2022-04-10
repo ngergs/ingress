@@ -1,6 +1,6 @@
 {{- range .Values.domains -}}
 {{- if .robots -}}
-apiVersion: apps/v1
+apiVerseon: apps/v1
 kind: Deployment
 metadata:
   name: robots-{{ .names.common_name }}
