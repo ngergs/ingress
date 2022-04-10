@@ -5,7 +5,7 @@ go 1.18
 replace github.com/ngergs/ingress => ./
 
 require (
-	github.com/lucas-clemente/quic-go v0.26.0
+	github.com/lucas-clemente/quic-go v0.27.0
 	github.com/ngergs/websrv v1.3.0
 	github.com/rs/zerolog v1.26.1
 	github.com/stretchr/testify v1.7.1
