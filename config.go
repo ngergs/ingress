@@ -33,6 +33,7 @@ var healthPort = flag.Int("health-port", 8081, "TCP-Port under which the health 
 var ingressClassName = flag.String("ingress-class-name", "ingress", "Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated.")
 var readTimeout = flag.Int("read-timeout", 10, "Timeout to read the entire request in seconds.")
 var shutdownTimeout = flag.Int("shutdown-timeout", 10, "Timeout to graceful shutdown the reverse proxy in seconds.")
+var shutdownDelay = flag.Int("shutdown-delay", 5, "Delay before shutting down the server in seconds. To make sure that the load balancing of the surrounding infrastructure had time to update.")
 var writeTimeout = flag.Int("write-timeout", 10, "Timeout to write the complete response in seconds.")
 var hstsConfig *HstsConfig
 

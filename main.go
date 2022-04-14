@@ -37,8 +37,10 @@ func main() {
 	httpServer := getServer(httpPort, reverseProxy.GetHttpsRedirectHandler(), middleware...)
 	// port is defined below via listenAndServeTls. Therefore, do not set it here to avoid the illusion of it being of relevance here.
 	tlsServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
-	websrv.AddGracefulShutdown(ctx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
-	websrv.AddGracefulShutdown(ctx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
+	httpCtx := context.WithValue(ctx, websrv.ServerName, "http server")
+	websrv.AddGracefulShutdown(httpCtx, &wg, httpServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
+	tlsCtx := context.WithValue(ctx, websrv.ServerName, "https server")
+	websrv.AddGracefulShutdown(tlsCtx, &wg, tlsServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
 
 	tlsConfig := getTlsConfig()
 	tlsConfig.GetCertificate = reverseProxy.GetCertificateFunc()
@@ -51,17 +53,21 @@ func main() {
 	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, tlsConfig) }()
 	if *http3Enabled {
 		quicServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
-		websrv.AddGracefulShutdown(ctx, &wg, quicServer, time.Duration(*shutdownTimeout)*time.Second)
+		quicCtx := context.WithValue(ctx, websrv.ServerName, "http3 server")
+		websrv.AddGracefulShutdown(quicCtx, &wg, quicServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
 		go func() { errChan <- listenAndServeQuic(ctx, *http3Port, quicServer, tlsConfig) }()
-	}
-	if *health {
-		healthServer := getHealthServer()
-		websrv.AddGracefulShutdown(ctx, &wg, healthServer, time.Duration(*shutdownTimeout)*time.Second)
-		go func() { errChan <- healthServer.ListenAndServe() }()
 	}
 
 	go logErrors(errChan)
-	wg.Wait()
+	// stop health server after everything else has stopped
+	if *health {
+		healthServer := getHealthServer()
+		healthCtx := context.WithValue(context.Background(), websrv.ServerName, "health server")
+		// 1 second is sufficient as timeout for the health server
+		websrv.RunTillWaitGroupFinishes(healthCtx, &wg, healthServer, errChan, time.Duration(1)*time.Second)
+	} else {
+		wg.Wait()
+	}
 }
 
 // setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everyhing for the reverse proxy.
