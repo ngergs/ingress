@@ -9,9 +9,9 @@ require (
 	github.com/ngergs/websrv v1.4.2
 	github.com/rs/zerolog v1.26.1
 	github.com/stretchr/testify v1.7.1
-	k8s.io/api v0.23.5
-	k8s.io/apimachinery v0.23.5
-	k8s.io/client-go v0.23.5
+	k8s.io/api v0.23.6
+	k8s.io/apimachinery v0.23.6
+	k8s.io/client-go v0.23.6
 )
 
 require (
