@@ -25,3 +25,6 @@ domains:
 #          allow:
 #      sitemap:
 #      replicaCount: 1
+automountServiceAccountToken:
+  ingress: true
+  robots: true
