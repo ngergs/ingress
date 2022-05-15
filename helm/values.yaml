@@ -1,6 +1,6 @@
 replicaCount: 1
 nodeSelector:
-#  ingress:
+  ingress:
 #    cloud.google.com/gke-nodepool:
 #  robots:
 #    cloud.google.com/gke-nodepool:
