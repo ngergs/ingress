@@ -77,7 +77,7 @@ jobs:
           push: true
           build-args: VERSION=v${{ needs.test-and-pre-release.outputs.version }}
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/ingress:${{ steps.semrel.outputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/ingress:${{ needs.test-and-pre-release.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/ingress:latest
       - name: Release with Notes
         uses: softprops/action-gh-release@v1

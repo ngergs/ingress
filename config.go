@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var version = "snapshot"
 var accessLog = flag.Bool("access-log", true, "Prints an access log.")
 var debugLogging = flag.Bool("debug", false, "Log debug level")
 var help = flag.Bool("help", false, "Prints the help.")
@@ -72,6 +73,7 @@ func setup() {
 
 	stdlog.SetFlags(0)
 	stdlog.SetOutput(log.Logger)
+	log.Info().Msgf("This is ingress version %s", version)
 }
 
 // hstsHeader returns the HSTS HTTP-Header value
