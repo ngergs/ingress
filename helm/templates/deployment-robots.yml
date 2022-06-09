@@ -38,6 +38,8 @@ spec:
               port: health
           securityContext:
             runAsUser: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
           volumeMounts:
             - name: robots-conf
