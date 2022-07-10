@@ -35,7 +35,11 @@ func listenAndServeQuic(ctx context.Context, port int, server *http.Server, tlsC
 	if err != nil {
 		return err
 	}
-	quicServer := http3.Server{Server: server}
+	quicServer := http3.Server{
+		Addr:      server.Addr,
+		TLSConfig: tlsConfig,
+		Handler:   server.Handler,
+	}
 	return quicServer.ServeListener(listener)
 }
 
