@@ -34,9 +34,9 @@ func main() {
 	}
 
 	middleware, middlewareTLS := setupMiddleware()
-	httpServer := getServer(httpPort, reverseProxy.GetHttpsRedirectHandler(), middleware...)
+	httpServer := getServer(httpPort, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second, reverseProxy.GetHttpsRedirectHandler(), middleware...)
 	// port is defined below via listenAndServeTls. Therefore, do not set it here to avoid the illusion of it being of relevance here.
-	tlsServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
+	tlsServer := getServer(nil, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second, reverseProxy.GetHandlerProxying(), middlewareTLS...)
 	httpCtx := context.WithValue(ctx, websrv.ServerName, "http server")
 	websrv.AddGracefulShutdown(httpCtx, &wg, httpServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
 	tlsCtx := context.WithValue(ctx, websrv.ServerName, "https server")
@@ -50,12 +50,12 @@ func main() {
 		log.Info().Msgf("Listening for HTTP under container port tcp/%s", httpServer.Addr[1:])
 		errChan <- httpServer.ListenAndServe()
 	}()
-	go func() { errChan <- listenAndServeTls(ctx, *httpsPort, tlsServer, tlsConfig) }()
+	go func() { errChan <- listenAndServeTls(*httpsPort, tlsServer, tlsConfig) }()
 	if *http3Enabled {
-		quicServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
+		quicServer := getServer(nil, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second, reverseProxy.GetHandlerProxying(), middlewareTLS...)
 		quicCtx := context.WithValue(ctx, websrv.ServerName, "http3 server")
 		websrv.AddGracefulShutdown(quicCtx, &wg, quicServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
-		go func() { errChan <- listenAndServeQuic(ctx, *http3Port, quicServer, tlsConfig) }()
+		go func() { errChan <- listenAndServeQuic(*http3Port, quicServer, tlsConfig) }()
 	}
 
 	go logErrors(errChan)
@@ -146,10 +146,10 @@ func setupk8s() (*rest.Config, error) {
 
 // forwardUpdates listens to the update channel from the stateManager and calls the LoadIngressState method of the reverse proxy to forwards the results.
 func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revproxy.ReverseProxy) {
-	for state := range stateManager.GetStateChan() {
-		err := reverseProxy.LoadIngressState(state)
+	for currentState := range stateManager.GetStateChan() {
+		err := reverseProxy.LoadIngressState(currentState)
 		if err != nil {
-			log.Error().Err(err).Msg("failed to apply updated state")
+			log.Error().Err(err).Msg("failed to apply updated currentState")
 		}
 	}
 }

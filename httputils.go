@@ -1,11 +1,11 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
@@ -16,7 +16,7 @@ import (
 // listenAndServeTls is a wrapper that starts a net.Listener under the given tcp port
 // and subsequently listens with the provided http.Server to that listener.
 // Blocks until finished just like http.server.ListenAndServe
-func listenAndServeTls(ctx context.Context, port int, server *http.Server, tlsConfig *tls.Config) error {
+func listenAndServeTls(port int, server *http.Server, tlsConfig *tls.Config) error {
 	log.Info().Msgf("Listening for HTTPS under container port tcp/%d", port)
 	tlsListener, err := tls.Listen("tcp", ":"+strconv.Itoa(port), tlsConfig)
 	if err != nil {
@@ -28,7 +28,7 @@ func listenAndServeTls(ctx context.Context, port int, server *http.Server, tlsCo
 // listenAndServeQuic is a wrapper that starts a quic.EarlyListener under the given udp port
 // and subsequently listens with the provided http.Server autowrapped into a http3.Server to that listener.
 // Blocks until finished just like http.server.ListenAndServe
-func listenAndServeQuic(ctx context.Context, port int, server *http.Server, tlsConfig *tls.Config) error {
+func listenAndServeQuic(port int, server *http.Server, tlsConfig *tls.Config) error {
 	log.Info().Msgf("Listening for HTTP3 under container port udp/%d", port)
 	tlsConfig = http3.ConfigureTLSConfig(tlsConfig)
 	listener, err := quic.ListenAddrEarly(":"+strconv.Itoa(port), tlsConfig, nil)
@@ -44,10 +44,14 @@ func listenAndServeQuic(ctx context.Context, port int, server *http.Server, tlsC
 }
 
 // getServer returns the http.Server to start the http endpoint.
-// Middleware is applied in order of occurence, i.e. the first provided middleare sees the request first.
-func getServer(port *int, handler http.Handler, handlerSetups ...websrv.HandlerMiddleware) *http.Server {
+// Middleware is applied in order of occurrence, i.e. the first provided middleware sees the request first.
+func getServer(port *int, readTimeout time.Duration, writeTimeout time.Duration, idleTimeout time.Duration,
+	handler http.Handler, handlerSetups ...websrv.HandlerMiddleware) *http.Server {
 	server := &http.Server{
-		Handler: addMiddleware(handler, handlerSetups...),
+		Handler:      addMiddleware(handler, handlerSetups...),
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  idleTimeout,
 	}
 	if port != nil {
 		server.Addr = ":" + strconv.Itoa(*port)
@@ -65,7 +69,7 @@ func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware)
 
 // startHealthserver initializes the health server.
 func getHealthServer() *http.Server {
-	healthServer := websrv.Build(*healthPort,
+	healthServer := websrv.Build(*healthPort, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second,
 		websrv.HealthCheckHandler(),
 		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
 	)

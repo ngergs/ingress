@@ -31,6 +31,7 @@ var hstsPreload = flag.Bool("hsts-preload", false, "Whether the HSTS preload dir
 var health = flag.Bool("health", true, "Whether to start the health check endpoint (/ under a separate port)")
 var healthAccessLog = flag.Bool("health-access-log", false, "Prints an access log for the health check endpoint to stdout.")
 var healthPort = flag.Int("health-port", 8081, "TCP-Port under which the health check endpoint runs.")
+var idleTimeout = flag.Int("idle-timeout", 30, "Timeout for idle TCP connections with keep-alive in seconds.")
 var ingressClassName = flag.String("ingress-class-name", "ingress", "Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated.")
 var readTimeout = flag.Int("read-timeout", 10, "Timeout to read the entire request in seconds.")
 var shutdownTimeout = flag.Int("shutdown-timeout", 10, "Timeout to graceful shutdown the reverse proxy in seconds.")
