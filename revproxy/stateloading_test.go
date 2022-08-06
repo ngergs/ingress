@@ -15,8 +15,8 @@ func TestLoadIngressState(t *testing.T) {
 	reverseProxy := New()
 	err := reverseProxy.LoadIngressState(inputState)
 	assert.Nil(t, err)
-	proxyState, ok := reverseProxy.state.Load()
-	assert.True(t, ok)
+	proxyState := reverseProxy.state.Load()
+	assert.NotNil(t, proxyState)
 	assert.Equal(t, cert, proxyState.tlsCerts[dummyHost])
 
 	// expectedOrder in proxyState is 2->0->1 as exact paths take precedence over prefixes and the longest prefixes wins against other prefixes

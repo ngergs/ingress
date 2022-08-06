@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 )
 
 const acmePath = "/.well-known/acme-challenge"
@@ -16,7 +17,7 @@ type ReverseProxy struct {
 	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
 	Transport *http.Transport
 	// state holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
-	state atomicVal[*reverseProxyState]
+	state atomic.Pointer[reverseProxyState]
 }
 
 // BackendRouting contains a mopping of host name to the relevant backend path handlers in order of priority
@@ -70,8 +71,8 @@ func New(options ...ConfigOption) *ReverseProxy {
 // Supposed to be used with tls.Listener.
 func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		state, ok := proxy.state.Load()
-		if !ok {
+		state := proxy.state.Load()
+		if state == nil {
 			return nil, fmt.Errorf("state not initialized")
 		}
 		cert, ok := state.tlsCerts[hello.ServerName]
@@ -87,8 +88,8 @@ func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo)
 // A TLS-terminating setup should use this for HTTPS only.
 func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state, ok := proxy.state.Load()
-		if !ok {
+		state := proxy.state.Load()
+		if state == nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -112,8 +113,8 @@ func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 // Paths that start with  "/.well-known/acme-challenge" are stil reverse proxied to the backend for ACME challenges.
 func (proxy *ReverseProxy) GetHttpsRedirectHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state, ok := proxy.state.Load()
-		if !ok {
+		state := proxy.state.Load()
+		if state == nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
