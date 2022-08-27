@@ -3,21 +3,22 @@ package revproxy
 import (
 	"crypto/tls"
 	"fmt"
-	v1Net "k8s.io/api/networking/v1"
 	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
+
+	v1Net "k8s.io/api/networking/v1"
 )
 
 const acmePath = "/.well-known/acme-challenge"
 
 // ReverseProxy implements the main ingress reverse proxy logic
 type ReverseProxy struct {
-	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
-	Transport *http.Transport
 	// state holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
 	state atomic.Pointer[reverseProxyState]
+	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
+	Transport *http.Transport
 }
 
 // BackendRouting contains a mopping of host name to the relevant backend path handlers in order of priority
@@ -37,9 +38,9 @@ type backendPathHandlers []*backendPathHandler
 
 // backendPathHandler holds the ingress PathRule for path matching as well as the corresponding reverse proxy handler for the given backend path.
 type backendPathHandler struct {
+	ProxyHandler http.Handler
 	PathType     *v1Net.PathType
 	Path         string
-	ProxyHandler http.Handler
 }
 
 // match returns the matching backendPathHandler for the given path argument if one is present

@@ -21,8 +21,8 @@ type IngressStateManager struct {
 	ingressLister    v1NetListers.IngressLister
 	serviceLister    v1CoreListers.ServiceLister
 	secretLister     v1CoreListers.SecretLister
-	ingressClassName string
 	ingressStateChan chan *IngressState
+	ingressClassName string
 }
 
 type BackendPaths map[string][]*PathConfig // host->ingressPath

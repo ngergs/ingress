@@ -8,8 +8,8 @@ import (
 // debouncer is internally used struct for the debounce function to debounce spammed calls to the callback func.
 type debouncer struct {
 	callback       func()
-	bufferDuration time.Duration
 	triggerChan    chan time.Time
+	bufferDuration time.Duration
 }
 
 // debounce receives a function callback and wraps it.
