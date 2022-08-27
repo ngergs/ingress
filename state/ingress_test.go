@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	v1 "k8s.io/api/networking/v1"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -17,7 +16,7 @@ var pathType = v1Net.PathTypePrefix
 
 const debounceDuration = time.Duration(10) * time.Millisecond
 
-func internalTestIngress(t *testing.T, setIngressPort func(*v1.Ingress)) {
+func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
 	stateManager := New(ctx, client, ingressClassName, DebounceDuration(debounceDuration))
@@ -43,14 +42,14 @@ func internalTestIngress(t *testing.T, setIngressPort func(*v1.Ingress)) {
 }
 
 func TestIngressServicePortNumber(t *testing.T) {
-	setIngressPort := func(ingress *v1.Ingress) {
+	setIngressPort := func(ingress *v1Net.Ingress) {
 		ingress.Spec.Rules[0].IngressRuleValue.HTTP.Paths[0].Backend.Service.Port.Number = servicePort
 	}
 	internalTestIngress(t, setIngressPort)
 }
 
 func TestIngressServicePortName(t *testing.T) {
-	setIngressPort := func(ingress *v1.Ingress) {
+	setIngressPort := func(ingress *v1Net.Ingress) {
 		ingress.Spec.Rules[0].IngressRuleValue.HTTP.Paths[0].Backend.Service.Port.Name = servicePortName
 	}
 	internalTestIngress(t, setIngressPort)
