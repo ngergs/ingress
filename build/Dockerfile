@@ -7,7 +7,7 @@ WORKDIR /root
 RUN apk --no-cache add git && \
   go install github.com/google/go-licenses@latest && \
   cd app && \
-  CGO_ENABLED=0 GOOD=linux GOARCH=amd64 go build -a -ldflags "-s -w -X 'main.version=${VERSION}'" && \
+  CGO_ENABLED=0 GOOD=linux GOARCH=amd64 go build -a -ldflags "-s -w -X 'main.version=${VERSION}'" ./cmd/ingress/ && \
   go-licenses save ./... --save_path=legal
 
 FROM gcr.io/distroless/static:debug

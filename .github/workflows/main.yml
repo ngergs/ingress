@@ -40,3 +40,4 @@ jobs:
           dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
           release-version: ${{ needs.test-and-pre-release.outputs.version }}
           release-notes-cache-key: ${{ needs.test-and-pre-release.outputs.release-notes-cache-key }}
+          dockerfile: build/Dockerfile
