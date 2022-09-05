@@ -6,7 +6,7 @@ replace github.com/ngergs/ingress => ./
 
 require (
 	github.com/lucas-clemente/quic-go v0.29.0
-	github.com/ngergs/websrv v1.6.2
+	github.com/ngergs/websrv v1.6.3
 	github.com/rs/zerolog v1.28.0
 	github.com/stretchr/testify v1.8.0
 	k8s.io/api v0.25.0
