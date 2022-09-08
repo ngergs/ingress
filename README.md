@@ -13,7 +13,7 @@ as long as you do not need advanced features. See the [helm](./helm) folder for 
 Compile from source:
 ```bash
 git clone https://github.com/ngergs/ingress
-go build
+go build ./cmd/ingress/
 ```
 
 ## Usage
