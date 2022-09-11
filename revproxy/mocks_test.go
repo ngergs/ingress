@@ -1,38 +1,19 @@
 package revproxy
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	v1Net "k8s.io/api/networking/v1"
 )
 
 const dummyHost = "localhost"
 const prefixPath = "/test"
-
-type mockResponseWriter struct {
-	receivedData bytes.Buffer
-	mock         mock.Mock
-}
-
-func (w *mockResponseWriter) Header() http.Header {
-	args := w.mock.Called()
-	return args.Get(0).(http.Header)
-}
-
-func (w *mockResponseWriter) Write(data []byte) (int, error) {
-	return w.receivedData.Write(data)
-}
-
-func (w *mockResponseWriter) WriteHeader(statusCode int) {
-	w.mock.Called(statusCode)
-}
 
 type mockHandler struct {
 	w             http.ResponseWriter
@@ -49,9 +30,9 @@ func (handler *mockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // getDefaultHandlerMocks provides default mocks used for handler testing
-func getDefaultHandlerMocks() (w *mockResponseWriter, r *http.Request, next *mockHandler) {
+func getDefaultHandlerMocks() (w *httptest.ResponseRecorder, r *http.Request, next *mockHandler) {
 	next = &mockHandler{}
-	w = &mockResponseWriter{}
+	w = httptest.NewRecorder()
 	r = &http.Request{Header: make(map[string][]string)}
 	r = r.WithContext(context.Background())
 	return

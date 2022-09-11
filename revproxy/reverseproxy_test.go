@@ -42,11 +42,10 @@ func internalTestHandlerProxying(t *testing.T, host string, path string, expecte
 	next.serveHttpFunc = func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
 	reverseProxy := getDummyReverseProxy(t, next)
 	handler := reverseProxy.GetHandlerProxying()
-	w.mock.On("WriteHeader", expectedStatus).Return()
 	r.Host = host
 	r.URL = &url.URL{Path: path}
 	handler.ServeHTTP(w, r)
-	w.mock.AssertExpectations(t)
+	assert.Equal(t, expectedStatus, w.Result().StatusCode)
 }
 
 func TestHandlerProxying(t *testing.T) {
@@ -61,17 +60,12 @@ func internalTestHandlerRedirecting(t *testing.T, host string, path string, expe
 	next.serveHttpFunc = func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
 	reverseProxy := getDummyReverseProxy(t, next)
 	handler := reverseProxy.GetHttpsRedirectHandler()
-	headers := make(http.Header)
-	w.mock.On("WriteHeader", expectedStatus).Return()
-	if expectedStatus == http.StatusPermanentRedirect {
-		w.mock.On("Header").Return(headers)
-	}
 	r.Host = host
 	r.URL = &url.URL{Path: path}
 	handler.ServeHTTP(w, r)
-	w.mock.AssertExpectations(t)
+	assert.Equal(t, expectedStatus, w.Result().StatusCode)
 	if expectedStatus == http.StatusPermanentRedirect {
-		location := headers.Get("Location")
+		location := w.Result().Header.Get("Location")
 		assert.Equal(t, "https://"+host+path, location)
 	}
 }
@@ -87,9 +81,8 @@ func TestHandlerRedirecting(t *testing.T) {
 
 func internalTestHandlerStateNotRdy(t *testing.T, handler http.Handler) {
 	w, r, _ := getDefaultHandlerMocks()
-	w.mock.On("WriteHeader", http.StatusServiceUnavailable).Return()
 	handler.ServeHTTP(w, r)
-	w.mock.AssertExpectations(t)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
 }
 
 func TestHandlerStateNotRdy(t *testing.T) {

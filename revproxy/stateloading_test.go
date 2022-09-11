@@ -20,9 +20,9 @@ func TestLoadIngressState(t *testing.T) {
 	assert.Equal(t, cert, proxyState.tlsCerts[dummyHost])
 
 	// expectedOrder in proxyState is 2->0->1 as exact paths take precedence over prefixes and the longest prefixes wins against other prefixes
-	assertEqual(t, inputState.BackendPaths[dummyHost][0], proxyState.backendPathHandlers[dummyHost][2])
-	assertEqual(t, inputState.BackendPaths[dummyHost][1], proxyState.backendPathHandlers[dummyHost][0])
-	assertEqual(t, inputState.BackendPaths[dummyHost][2], proxyState.backendPathHandlers[dummyHost][1])
+	assertPathEqual(t, inputState.BackendPaths[dummyHost][0], proxyState.backendPathHandlers[dummyHost][2])
+	assertPathEqual(t, inputState.BackendPaths[dummyHost][1], proxyState.backendPathHandlers[dummyHost][0])
+	assertPathEqual(t, inputState.BackendPaths[dummyHost][2], proxyState.backendPathHandlers[dummyHost][1])
 }
 
 func TestLoadIngressStateCertError(t *testing.T) {
@@ -32,7 +32,7 @@ func TestLoadIngressStateCertError(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func assertEqual(t *testing.T, backendPath *state.PathConfig, proxyBackendPath *backendPathHandler) {
+func assertPathEqual(t *testing.T, backendPath *state.PathConfig, proxyBackendPath *backendPathHandler) {
 	assert.Equal(t, backendPath.PathType, proxyBackendPath.PathType)
 	assert.Equal(t, backendPath.Path, proxyBackendPath.Path)
 }
