@@ -7,6 +7,7 @@ replace github.com/ngergs/ingress => ./
 require (
 	github.com/lucas-clemente/quic-go v0.31.1
 	github.com/ngergs/websrv v1.9.0
+	github.com/prometheus/client_golang v1.14.0
 	github.com/rs/zerolog v1.28.0
 	github.com/stretchr/testify v1.8.0
 	k8s.io/api v0.27.0-alpha.0
@@ -48,7 +49,6 @@ require (
 	github.com/onsi/ginkgo/v2 v2.6.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.39.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect

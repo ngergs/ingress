@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,22 +28,21 @@ import (
 func main() {
 	setup()
 	var wg sync.WaitGroup
-	ctx := websrv.SigTermCtx(context.Background())
+	sigtermCtx := websrv.SigTermCtx(context.Background())
 
-	reverseProxy, err := setupReverseProxy(ctx)
+	reverseProxy, err := setupReverseProxy(sigtermCtx)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not setup reverse proxy")
 	}
 
 	middleware, middlewareTLS := setupMiddleware()
-	httpServer := getServer(httpPort, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second, reverseProxy.GetHttpsRedirectHandler(), middleware...)
+	httpServer := getServer(httpPort, reverseProxy.GetHttpsRedirectHandler(), middleware...)
 	// port is defined below via listenAndServeTls. Therefore, do not set it here to avoid the illusion of it being of relevance here.
-	tlsServer := getServer(nil, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second, reverseProxy.GetHandlerProxying(), middlewareTLS...)
-	httpCtx := context.WithValue(ctx, websrv.ServerName, "http server")
+	tlsServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
+	httpCtx := context.WithValue(sigtermCtx, websrv.ServerName, "http server")
 	websrv.AddGracefulShutdown(httpCtx, &wg, httpServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
-	tlsCtx := context.WithValue(ctx, websrv.ServerName, "https server")
+	tlsCtx := context.WithValue(sigtermCtx, websrv.ServerName, "https server")
 	websrv.AddGracefulShutdown(tlsCtx, &wg, tlsServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
-
 	tlsConfig := getTlsConfig()
 	tlsConfig.GetCertificate = reverseProxy.GetCertificateFunc()
 
@@ -52,17 +53,27 @@ func main() {
 	}()
 	go func() { errChan <- listenAndServeTls(*httpsPort, tlsServer, tlsConfig) }()
 	if *http3Enabled {
-		quicServer := getServer(nil, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second, reverseProxy.GetHandlerProxying(), middlewareTLS...)
-		quicCtx := context.WithValue(ctx, websrv.ServerName, "http3 server")
+		quicServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
+		quicCtx := context.WithValue(sigtermCtx, websrv.ServerName, "http3 server")
 		websrv.AddGracefulShutdown(quicCtx, &wg, quicServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
 		go func() { errChan <- listenAndServeQuic(*http3Port, quicServer, tlsConfig) }()
+	}
+	if *metrics {
+		go func() {
+			metricsServer := getServer(metricsPort, promhttp.Handler(), websrv.Optional(websrv.AccessLog(), *metricsAccessLog))
+			metricsCtx := context.WithValue(sigtermCtx, websrv.ServerName, "prometheus metrics server")
+			websrv.AddGracefulShutdown(metricsCtx, &wg, metricsServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
+			log.Info().Msgf("Listening for prometheus metric scrapes under container port tcp/%s", metricsServer.Addr[1:])
+			errChan <- metricsServer.ListenAndServe()
+		}()
 	}
 
 	go logErrors(errChan)
 	// stop health server after everything else has stopped
 	if *health {
-		healthServer := getHealthServer()
+		healthServer := getServer(healthPort, websrv.HealthCheckHandler(), websrv.Optional(websrv.AccessLog(), *healthAccessLog))
 		healthCtx := context.WithValue(context.Background(), websrv.ServerName, "health server")
+		log.Info().Msgf("Starting healthcheck server on port tcp/%d", *healthPort)
 		// 1 second is sufficient as timeout for the health server
 		websrv.RunTillWaitGroupFinishes(healthCtx, &wg, healthServer, errChan, time.Duration(1)*time.Second)
 	} else {
@@ -97,7 +108,12 @@ func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy
 
 // setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config
 func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []websrv.HandlerMiddleware) {
+	var promRegisterer prometheus.Registerer
+	if *metrics {
+		promRegisterer = prometheus.DefaultRegisterer
+	}
 	middleware = []websrv.HandlerMiddleware{
+		websrv.Optional(websrv.AccessMetrics(promRegisterer, *metricsNamespace), *metrics),
 		websrv.Optional(websrv.AccessLog(), *accessLog),
 		websrv.RequestID(),
 	}

@@ -44,14 +44,14 @@ func listenAndServeQuic(port int, server *http.Server, tlsConfig *tls.Config) er
 }
 
 // getServer returns the http.Server to start the http endpoint.
+// timeouts are directly picked up from the config values
 // Middleware is applied in order of occurrence, i.e. the first provided middleware sees the request first.
-func getServer(port *int, readTimeout time.Duration, writeTimeout time.Duration, idleTimeout time.Duration,
-	handler http.Handler, handlerSetups ...websrv.HandlerMiddleware) *http.Server {
+func getServer(port *int, handler http.Handler, handlerSetups ...websrv.HandlerMiddleware) *http.Server {
 	server := &http.Server{
 		Handler:      addMiddleware(handler, handlerSetups...),
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		IdleTimeout:  idleTimeout,
+		ReadTimeout:  time.Duration(*readTimeout) * time.Second,
+		WriteTimeout: time.Duration(*writeTimeout) * time.Second,
+		IdleTimeout:  time.Duration(*idleTimeout) * time.Second,
 	}
 	if port != nil {
 		server.Addr = ":" + strconv.Itoa(*port)
@@ -65,16 +65,6 @@ func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware)
 		root = handlerSetup(root)
 	}
 	return root
-}
-
-// startHealthserver initializes the health server.
-func getHealthServer() *http.Server {
-	healthServer := websrv.Build(*healthPort, time.Duration(*readTimeout)*time.Second, time.Duration(*writeTimeout)*time.Second, time.Duration(*idleTimeout)*time.Second,
-		websrv.HealthCheckHandler(),
-		websrv.Optional(websrv.AccessLog(), *healthAccessLog),
-	)
-	log.Info().Msgf("Starting healthcheck server on port tcp/%d", *healthPort)
-	return healthServer
 }
 
 // logErrors listens to the provided errChan and logs the received errors
