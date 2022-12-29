@@ -2,24 +2,20 @@ package state
 
 import (
 	"context"
-	"testing"
-	"time"
-
 	"github.com/stretchr/testify/assert"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"testing"
 )
 
 var ingressClassName = "test"
 var pathType = v1Net.PathTypePrefix
 
-const debounceDuration = time.Duration(10) * time.Millisecond
-
 func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
-	stateManager := New(ctx, client, ingressClassName, DebounceDuration(debounceDuration))
+	stateManager := New(ctx, client, ingressClassName)
 	ingress := getDummyIngress()
 	service := getDummyService()
 	setIngressPort(ingress)
@@ -58,7 +54,7 @@ func TestIngressServicePortName(t *testing.T) {
 func TestSecret(t *testing.T) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
-	stateManager := New(ctx, client, ingressClassName, DebounceDuration(debounceDuration))
+	stateManager := New(ctx, client, ingressClassName)
 	ingress := getDummyIngressSecretRef()
 	secret, cert, certKey := getDummySecret(t)
 

@@ -2,27 +2,30 @@ package state
 
 import (
 	"context"
-	"time"
-
 	"github.com/rs/zerolog/log"
-
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
+	v1ClientCore "k8s.io/client-go/informers/core/v1"
+	v1ClientNet "k8s.io/client-go/informers/networking/v1"
 	"k8s.io/client-go/kubernetes"
-	v1CoreListers "k8s.io/client-go/listers/core/v1"
-	v1NetListers "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type IngressStateManager struct {
-	ingressLister    v1NetListers.IngressLister
-	serviceLister    v1CoreListers.ServiceLister
-	secretLister     v1CoreListers.SecretLister
+	factories        []informers.SharedInformerFactory
+	ingressInformer  v1ClientNet.IngressInformer
+	serviceInformer  v1ClientCore.ServiceInformer
+	secretInformer   v1ClientCore.SecretInformer
 	ingressStateChan chan *IngressState
 	ingressClassName string
+	refetchMu        sync.Mutex
+	refetchQueued    atomic.Bool
 }
 
 type BackendPaths map[string][]*PathConfig // host->ingressPath
@@ -47,9 +50,7 @@ type IngressState struct {
 }
 
 // New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
-func New(ctx context.Context, client kubernetes.Interface, ingressClassName string, options ...ConfigOption) *IngressStateManager {
-	config := defaultConfig.clone().applyOptions(options...)
-
+func New(ctx context.Context, client kubernetes.Interface, ingressClassName string) *IngressStateManager {
 	factoryGeneral := informers.NewSharedInformerFactory(client, 0)
 	factorySecrets := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithTweakListOptions(
 		func(list *v1Meta.ListOptions) {
@@ -60,21 +61,17 @@ func New(ctx context.Context, client kubernetes.Interface, ingressClassName stri
 	secretInformer := factorySecrets.Core().V1().Secrets()
 
 	stateManager := &IngressStateManager{
-		ingressLister:    ingressInformer.Lister(),
-		serviceLister:    serviceInformer.Lister(),
-		secretLister:     secretInformer.Lister(),
+		factories:        []informers.SharedInformerFactory{factoryGeneral, factorySecrets},
+		ingressInformer:  ingressInformer,
+		serviceInformer:  serviceInformer,
+		secretInformer:   secretInformer,
 		ingressClassName: ingressClassName,
 		ingressStateChan: make(chan *IngressState),
 	}
-
-	// Start listening to relevant API objects for changes
-	informHandler := stateManager.refetchState
-	if config.DebounceDuration != time.Duration(0) {
-		informHandler = debounce(ctx, config.DebounceDuration, informHandler)
-	}
-	go stateManager.startInformer(ctx, ingressInformer.Informer(), true, informHandler)
-	go stateManager.startInformer(ctx, serviceInformer.Informer(), true, informHandler)
-	go stateManager.startInformer(ctx, secretInformer.Informer(), false, informHandler)
+	stateManager.setupInformer(ctx, ingressInformer.Informer(), true)
+	stateManager.setupInformer(ctx, serviceInformer.Informer(), true)
+	stateManager.setupInformer(ctx, secretInformer.Informer(), false)
+	stateManager.start(ctx)
 	return stateManager
 }
 
@@ -84,44 +81,81 @@ func (stateManager *IngressStateManager) GetStateChan() <-chan *IngressState {
 }
 
 // refetchState is used to collect a new state from the Kubernetes API from scratch.
-func (stateManager *IngressStateManager) refetchState() {
-	ingresses, err := stateManager.ingressLister.List(labels.Everything())
+// multiple calls will only result in a single refetch invocation.
+// The logic is to wait till the k8s informers are synced, any parallel calls prior to this point
+// only result in a single refetch. Once the k8s informers are synced a call to this function queues
+// a new refetch.
+func (stateManager *IngressStateManager) refetchState(ctx context.Context) {
+	log.Debug().Msg("refetchState called")
+	if !stateManager.refetchQueued.CompareAndSwap(false, true) {
+		log.Debug().Msg("refetch already queued")
+		return
+	}
+	log.Debug().Msg("refetchState waits for k8s informers to sync")
+	stateManager.waitForSync(ctx)
+	time.Sleep(100 * time.Millisecond) //small delay to accumulate changes
+	stateManager.refetchMu.Lock()
+	defer stateManager.refetchMu.Unlock()
+	stateManager.refetchQueued.Store(false)
+	log.Debug().Msg("refetchState determines new state")
+	ingresses, err := stateManager.ingressInformer.Lister().List(labels.Everything())
 	if err != nil {
 		log.Error().Err(err).Msg("error listening ingresses")
 		return
 	}
 	ingresses = filterByIngressClass(ingresses, stateManager.ingressClassName)
 	ingressState := &IngressState{
-		BackendPaths: getBackendPaths(stateManager.serviceLister, ingresses),
-		TlsCerts:     getTlsSecrets(stateManager.secretLister, ingresses),
+		BackendPaths: getBackendPaths(stateManager.serviceInformer.Lister(), ingresses),
+		TlsCerts:     getTlsSecrets(stateManager.secretInformer.Lister(), ingresses),
 	}
 	stateManager.ingressStateChan <- ingressState
 }
 
-// startInformer starts the given informer with the  general handler is being called for AddFunc, UpdateFunc, DeleteFunc.
-// The argument is not passed, as we reconstruct the general state anyhow.
-// The context can be used to cancel the informer.
-func (stateManager *IngressStateManager) startInformer(ctx context.Context, informer cache.SharedIndexInformer, logDebug bool, handler func()) {
+// setupInformer starts the given informer and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
+func (stateManager *IngressStateManager) setupInformer(ctx context.Context, informer cache.SharedIndexInformer, logDebug bool) {
 	wrappedHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if logDebug {
 				log.Debug().Msgf("Received k8s add update %v", obj)
 			}
-			handler()
+			go stateManager.refetchState(ctx)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if logDebug {
 				log.Debug().Msgf("Received k8s update, new: %v, old: %v", oldObj, newObj)
 			}
-			handler()
+			go stateManager.refetchState(ctx)
 		},
 		DeleteFunc: func(obj interface{}) {
 			if logDebug {
 				log.Debug().Msgf("Received k8s delete update %v", obj)
 			}
-			handler()
+			go stateManager.refetchState(ctx)
 		},
 	}
 	informer.AddEventHandler(wrappedHandler)
-	informer.Run(ctx.Done())
+}
+
+// waitFroSync waits till all factories sync. No specific order is enforced.
+func (stateManager *IngressStateManager) waitForSync(ctx context.Context) {
+	if len(stateManager.factories) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(stateManager.factories))
+	for _, factory := range stateManager.factories {
+		go func() {
+			factory.WaitForCacheSync(ctx.Done())
+			log.Debug().Msg("Waited for informer")
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
+// start starts all informed created from the internally stored factories
+func (stateManager *IngressStateManager) start(ctx context.Context) {
+	for _, factory := range stateManager.factories {
+		factory.Start(ctx.Done())
+	}
 }
