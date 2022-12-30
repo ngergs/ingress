@@ -108,20 +108,20 @@ func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy
 
 // setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config
 func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []websrv.HandlerMiddleware) {
-	var promRegisterer prometheus.Registerer
-	if *metrics {
-		promRegisterer = prometheus.DefaultRegisterer
+	var promRegistration *websrv.PrometheusRegistration
+	var err error
+	if *metricsAccessLog {
+		promRegistration, err = websrv.AccessMetricsRegister(prometheus.DefaultRegisterer, *metricsNamespace)
+		if err != nil {
+			log.Error().Err(err).Msg("Could not register custom prometheus metrics.")
+		}
 	}
 	middleware = []websrv.HandlerMiddleware{
-		websrv.Optional(websrv.AccessMetrics(promRegisterer, *metricsNamespace, true), *metricsAccessLog),
+		websrv.Optional(websrv.AccessMetrics(promRegistration), *metricsAccessLog),
 		websrv.Optional(websrv.AccessLog(), *accessLog),
 		websrv.RequestID(),
 	}
-	middlewareTLS = []websrv.HandlerMiddleware{
-		websrv.Optional(websrv.AccessMetrics(promRegisterer, *metricsNamespace, false), *metricsAccessLog),
-		websrv.Optional(websrv.AccessLog(), *accessLog),
-		websrv.RequestID(),
-	}
+	middlewareTLS = middleware
 	headers := make(map[string]string)
 	if *hstsEnabled {
 		headers["Strict-Transport-Security"] = hstsConfig.hstsHeader()
