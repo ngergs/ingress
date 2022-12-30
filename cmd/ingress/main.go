@@ -60,7 +60,7 @@ func main() {
 	}
 	if *metrics {
 		go func() {
-			metricsServer := getServer(metricsPort, promhttp.Handler(), websrv.AccessLog())
+			metricsServer := getServer(metricsPort, promhttp.Handler(), websrv.Optional(websrv.AccessLog(), *metricsAccessLog))
 			metricsCtx := context.WithValue(sigtermCtx, websrv.ServerName, "prometheus metrics server")
 			websrv.AddGracefulShutdown(metricsCtx, &wg, metricsServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
 			log.Info().Msgf("Listening for prometheus metric scrapes under container port tcp/%s", metricsServer.Addr[1:])
@@ -110,14 +110,14 @@ func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy
 func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []websrv.HandlerMiddleware) {
 	var promRegistration *websrv.PrometheusRegistration
 	var err error
-	if *metricsAccessLog {
+	if *metrics {
 		promRegistration, err = websrv.AccessMetricsRegister(prometheus.DefaultRegisterer, *metricsNamespace)
 		if err != nil {
 			log.Error().Err(err).Msg("Could not register custom prometheus metrics.")
 		}
 	}
 	middleware = []websrv.HandlerMiddleware{
-		websrv.Optional(websrv.AccessMetrics(promRegistration), *metricsAccessLog),
+		websrv.Optional(websrv.AccessMetrics(promRegistration), *metrics),
 		websrv.Optional(websrv.AccessLog(), *accessLog),
 		websrv.RequestID(),
 	}
