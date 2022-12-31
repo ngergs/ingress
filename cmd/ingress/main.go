@@ -90,16 +90,15 @@ func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy
 	}
 	k8sclient, err := kubernetes.NewForConfig(k8sconfig)
 	if err != nil {
-		log.Fatal().Err(err).Msg("error setting up k8s clients")
+		return nil, fmt.Errorf("error setting up k8s clients: %v", err)
 	}
 
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager := state.New(ctx, k8sclient, *ingressClassName)
-	reverseProxy = revproxy.New(
-		revproxy.BackendTimeout(backendTimeout))
+	ingressStateManager, err := state.New(ctx, k8sclient, *ingressClassName)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to setup reverse proxy")
+		return nil, fmt.Errorf("failed to setup ingress state manager: %v", err)
 	}
+	reverseProxy = revproxy.New(revproxy.BackendTimeout(backendTimeout))
 
 	// start listening to state updated and forward them to the reverse proxy
 	go forwardUpdates(ingressStateManager, reverseProxy)

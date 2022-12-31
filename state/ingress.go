@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"github.com/rs/zerolog/log"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,7 +15,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 type IngressStateManager struct {
@@ -50,7 +50,7 @@ type IngressState struct {
 }
 
 // New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
-func New(ctx context.Context, client kubernetes.Interface, ingressClassName string) *IngressStateManager {
+func New(ctx context.Context, client kubernetes.Interface, ingressClassName string) (*IngressStateManager, error) {
 	factoryGeneral := informers.NewSharedInformerFactory(client, 0)
 	factorySecrets := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithTweakListOptions(
 		func(list *v1Meta.ListOptions) {
@@ -68,11 +68,11 @@ func New(ctx context.Context, client kubernetes.Interface, ingressClassName stri
 		ingressClassName: ingressClassName,
 		ingressStateChan: make(chan *IngressState),
 	}
-	stateManager.setupInformer(ctx, ingressInformer.Informer(), true)
-	stateManager.setupInformer(ctx, serviceInformer.Informer(), true)
-	stateManager.setupInformer(ctx, secretInformer.Informer(), false)
-	stateManager.start(ctx)
-	return stateManager
+
+	if err := stateManager.startInformers(ctx); err != nil {
+		return nil, err
+	}
+	return stateManager, nil
 }
 
 // GetStateChan returns a channel where state updates are delivered. This is the main method used to fetch the current status.
@@ -93,7 +93,6 @@ func (stateManager *IngressStateManager) refetchState(ctx context.Context) {
 	}
 	log.Debug().Msg("refetchState waits for k8s informers to sync")
 	stateManager.waitForSync(ctx)
-	time.Sleep(100 * time.Millisecond) //small delay to accumulate changes
 	stateManager.refetchMu.Lock()
 	defer stateManager.refetchMu.Unlock()
 	stateManager.refetchQueued.Store(false)
@@ -111,8 +110,26 @@ func (stateManager *IngressStateManager) refetchState(ctx context.Context) {
 	stateManager.ingressStateChan <- ingressState
 }
 
-// setupInformer starts the given informer and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
-func (stateManager *IngressStateManager) setupInformer(ctx context.Context, informer cache.SharedIndexInformer, logDebug bool) {
+// setupInformers setups and start all internal informers and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
+func (stateManager *IngressStateManager) startInformers(ctx context.Context) error {
+	if err := stateManager.setupInformer(ctx, stateManager.ingressInformer.Informer(), true); err != nil {
+		return fmt.Errorf("failed to setup ingress informer: %v", err)
+	}
+	if err := stateManager.setupInformer(ctx, stateManager.serviceInformer.Informer(), true); err != nil {
+		return fmt.Errorf("failed to setup services informer: %v", err)
+	}
+	if err := stateManager.setupInformer(ctx, stateManager.secretInformer.Informer(), false); err != nil {
+		return fmt.Errorf("failed to setup secret informer: %v", err)
+	}
+
+	for _, factory := range stateManager.factories {
+		factory.Start(ctx.Done())
+	}
+	return nil
+}
+
+// setupInformer setups the given informer and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
+func (stateManager *IngressStateManager) setupInformer(ctx context.Context, informer cache.SharedIndexInformer, logDebug bool) error {
 	wrappedHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if logDebug {
@@ -134,6 +151,7 @@ func (stateManager *IngressStateManager) setupInformer(ctx context.Context, info
 		},
 	}
 	informer.AddEventHandler(wrappedHandler)
+	return nil
 }
 
 // waitFroSync waits till all factories sync. No specific order is enforced.
@@ -143,19 +161,13 @@ func (stateManager *IngressStateManager) waitForSync(ctx context.Context) {
 	}
 	var wg sync.WaitGroup
 	wg.Add(len(stateManager.factories))
-	for _, factory := range stateManager.factories {
-		go func() {
+	for i, el := range stateManager.factories {
+		go func(factory informers.SharedInformerFactory) {
+			log.Debug().Msgf("Waiting for informer from factory %d", i)
 			factory.WaitForCacheSync(ctx.Done())
-			log.Debug().Msg("Waited for informer")
+			log.Debug().Msgf("Waited for informer from factory %d", i)
 			wg.Done()
-		}()
+		}(el)
 	}
 	wg.Wait()
-}
-
-// start starts all informed created from the internally stored factories
-func (stateManager *IngressStateManager) start(ctx context.Context) {
-	for _, factory := range stateManager.factories {
-		factory.Start(ctx.Done())
-	}
 }
