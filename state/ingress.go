@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"net"
+	"strings"
 )
 
 type IngressStateManager struct {
@@ -51,7 +52,7 @@ func (state IngressState) getOrAddEmpty(key string) *DomainConfig {
 	return val
 }
 
-// New creates a new Kubernetes Ingress state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
+// New creates a new Kubernetes IngressInformer state. The ctx can be used to cancel the listening to updates from the Kubernetes API.
 // The hostIp is an optional argument. If and only if it is set the ingress status is updated.
 func New(ctx context.Context, client kubernetes.Interface, ingressClassName string, hostIp net.IP) (*IngressStateManager, error) {
 	k8sClients, err := newKubernetesClients(ctx, client)
@@ -75,8 +76,7 @@ func New(ctx context.Context, client kubernetes.Interface, ingressClassName stri
 			}
 		}
 	}()
-
-	return stateManager, nil
+	return stateManager, k8sClients.startInformers(ctx)
 }
 
 // GetStateChan returns a channel where state updates are delivered. This is the main method used to fetch the current status.
@@ -84,71 +84,130 @@ func (stateManager *IngressStateManager) GetStateChan() <-chan IngressState {
 	return stateManager.ingressStateChan
 }
 
-// refetchState is used to collect a new state from the Kubernetes API from scratch.
-func (stateManager *IngressStateManager) refetchState() {
-	ingresses, err := stateManager.k8sClients.Ingress.Lister().List(labels.Everything())
+// getIngresses fetches the list of ingresses with the relevant ingress class from the kubernetes api
+func (stateManager *IngressStateManager) getIngresses() ([]*v1Net.Ingress, error) {
+	ingresses, err := stateManager.k8sClients.IngressInformer.Lister().List(labels.Everything())
 	if err != nil {
-		log.Error().Err(err).Msg("error listening ingresses")
-		return
+		return nil, fmt.Errorf("error fetching ingress list: %v", err)
 	}
-	ingresses = filterByIngressClass(ingresses, stateManager.ingressClassName)
-
-	ingressState := make(IngressState)
-	stateManager.collectBackendPaths(ingresses, ingressState)
-	stateManager.collectTlsSecrets(ingresses, ingressState)
-	stateManager.ingressStateChan <- ingressState
-}
-
-// filterByIngressClass filters the ingresses and only selects those where the ingressClassName matches.
-func filterByIngressClass(ingresses []*v1Net.Ingress, ingressClassName string) []*v1Net.Ingress {
+	//filter the ingress class
 	n := 0
 	for _, el := range ingresses {
-		if (el.Spec.IngressClassName != nil && *el.Spec.IngressClassName == ingressClassName) ||
-			(el.Spec.IngressClassName == nil && el.Annotations["kubernetes.io/ingress.class"] == ingressClassName) {
+		if (el.Spec.IngressClassName != nil && *el.Spec.IngressClassName == stateManager.ingressClassName) ||
+			(el.Spec.IngressClassName == nil && el.Annotations["kubernetes.io/ingress.class"] == stateManager.ingressClassName) {
 			ingresses[n] = el
 			n++
 		}
 	}
-	return ingresses[:n]
+	return ingresses[:n], nil
 }
 
-// collectsBackendPaths collects the relevant backend path information and adds them to the ingress state. It also collects port numbers from referenced services.
-func (stateManager *IngressStateManager) collectBackendPaths(ingresses []*v1Net.Ingress, result IngressState) {
+// CleanIngressStatus is supposed to be called during shutdown and removes all ingress status entries set by this instance.
+// The internal state channel is not updated.
+func (stateManager *IngressStateManager) CleanIngressStatus(ctx context.Context) error {
+	ingresses, err := stateManager.getIngresses()
+	if err != nil {
+		return err
+	}
+
 	for _, ingress := range ingresses {
-		for _, rule := range ingress.Spec.Rules {
-			if rule.HTTP == nil {
-				continue
-			}
-			domainConfig := result.getOrAddEmpty(rule.Host)
-			backendPaths := make([]*BackendPath, len(rule.HTTP.Paths))
-			for i, path := range rule.HTTP.Paths {
-				backendPath := &BackendPath{
-					PathType:    path.PathType,
-					Path:        path.Path,
-					Namespace:   ingress.Namespace,
-					ServiceName: path.Backend.Service.Name,
-					ServicePort: path.Backend.Service.Port.Number,
-				}
-				err := stateManager.updatePortFromService(backendPath, path.Backend.Service.Port.Name)
-				if err != nil {
-					log.Warn().Err(err).Msgf("error getting service port %s referenced from backend path %s, skipping entry", path.Backend.Service.Port.Name, backendPath.Path)
-					continue
-				} else {
-					backendPaths[i] = backendPath
-				}
-			}
-			domainConfig.BackendPaths = append(domainConfig.BackendPaths, backendPaths...)
+		err := stateManager.k8sClients.cleanIngressStatus(ctx, ingress, stateManager.hostIp)
+		if err != nil {
+			return fmt.Errorf("could not clean ingress status: %v", err)
 		}
+	}
+	return nil
+}
+
+// refetchState is used to collect a new state from the Kubernetes API from scratch.
+func (stateManager *IngressStateManager) refetchState() {
+	ingresses, err := stateManager.getIngresses()
+	if err != nil {
+		log.Error().Err(err).Msg("error listening ingresses")
+		return
+	}
+
+	ingressState := make(IngressState)
+	for _, ingress := range ingresses {
+		errors := stateManager.collectBackendPaths(ingress, ingressState)
+		errors = append(errors, stateManager.collectTlsSecrets(ingress, ingressState)...)
+		log.Debug().Msgf("ingress errors: %v", errors)
+		status := statusFromErrors(errors, stateManager.hostIp)
+		err := stateManager.k8sClients.updateIngressStatus(context.TODO(), ingress, status)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to update ingress status")
+		}
+	}
+	stateManager.ingressStateChan <- ingressState
+}
+
+// statusFromErrors builds an ingress status from the given error list
+func statusFromErrors(errors []error, hostIp net.IP) *v1Net.IngressLoadBalancerIngress {
+	var errMsg *string
+	if len(errors) > 0 {
+		var sb strings.Builder
+		for i, err := range errors {
+			sb.WriteString(err.Error())
+			if i < len(errors)-1 {
+				sb.WriteString(";")
+			}
+		}
+		errMsgCollected := sb.String()
+		errMsg = &errMsgCollected
+	}
+	return &v1Net.IngressLoadBalancerIngress{
+		IP: hostIp.String(),
+		Ports: []v1Net.IngressPortStatus{
+			{Port: 80,
+				Protocol: "TCP",
+				Error:    errMsg,
+			},
+			{Port: 443,
+				Protocol: "TCP",
+				Error:    errMsg,
+			},
+		},
 	}
 }
 
-// updatePortFromService uses the Kubernetes API to fetch the Service status for the service referenced in the ingress config.
+// collectsBackendPaths collects the relevant backend path information and adds them to the ingress state. It also collects port numbers from referenced services.
+func (stateManager *IngressStateManager) collectBackendPaths(ingress *v1Net.Ingress, result IngressState) []error {
+	errors := make([]error, 0)
+	for _, rule := range ingress.Spec.Rules {
+		if rule.HTTP == nil {
+			continue
+		}
+		domainConfig := result.getOrAddEmpty(rule.Host)
+		backendPaths := make([]*BackendPath, 0)
+		for _, path := range rule.HTTP.Paths {
+			backendPath := &BackendPath{
+				PathType:    path.PathType,
+				Path:        path.Path,
+				Namespace:   ingress.Namespace,
+				ServiceName: path.Backend.Service.Name,
+				ServicePort: path.Backend.Service.Port.Number,
+			}
+			err := stateManager.updatePortFromService(backendPath, path.Backend.Service.Port.Name)
+			if err != nil {
+				log.Warn().Err(err).Msg("could not determine service port")
+				errors = append(errors, fmt.Errorf("ngergs.de/ServicePortNotFound: %s for backend service %s", path.Backend.Service.Port.Name, path.Backend.Service.Name))
+				continue
+			} else {
+				backendPaths = append(backendPaths, backendPath)
+			}
+		}
+		domainConfig.BackendPaths = append(domainConfig.BackendPaths, backendPaths...)
+	}
+	return errors
+}
+
+// updatePortFromService uses the Kubernetes API to fetch the ServiceInformer status for the service referenced in the ingress config.
 // If this has finished without error the config.ServicePort property is guaranteed to be set according to the current service spec.
 func (stateManager *IngressStateManager) updatePortFromService(config *BackendPath, servicePortName string) error {
 	if config.ServicePort == 0 && servicePortName == "" {
 		return fmt.Errorf("invalid config for path %s. Backend service does contain neither port name nor port number", config.Path)
 	}
-	svc, err := stateManager.k8sClients.Service.Lister().Services(config.Namespace).Get(config.ServiceName)
+	svc, err := stateManager.k8sClients.ServiceInformer.Lister().Services(config.Namespace).Get(config.ServiceName)
 	if err != nil {
 		return err
 	}
@@ -169,27 +228,29 @@ func (stateManager *IngressStateManager) updatePortFromService(config *BackendPa
 }
 
 // collectTlsSecrets fetches for all secrets that are referenced in the ingresses the relevant kubernetes.io/tls secrets from the Kubernetes API and adds them to the ingressState
-func (stateManager *IngressStateManager) collectTlsSecrets(ingresses []*v1Net.Ingress, result IngressState) {
-	for _, ingress := range ingresses {
-		for _, rule := range ingress.Spec.TLS {
-			secret, err := stateManager.k8sClients.Secret.Lister().Secrets(ingress.Namespace).Get(rule.SecretName)
-			if err != nil {
-				log.Warn().Err(err).Msgf("error getting ingress TLS certificate secret %s in namespace %s, skipping entry",
-					rule.SecretName, ingress.Namespace)
-				continue
-			}
-			if secret.Type != v1Core.SecretTypeTLS {
-				log.Warn().Msgf("Secret type mismatch, required kubernetes.io/tls, but found %s for secret %s in namespace %s, skipping entry.",
-					secret.Type, secret.Name, secret.Namespace)
-				continue
-			}
-			for _, host := range rule.Hosts {
-				domainConfig := result.getOrAddEmpty(host)
-				domainConfig.TlsCert = &TlsCert{
-					Cert: secret.Data["tls.crt"],
-					Key:  secret.Data["tls.key"],
-				}
+func (stateManager *IngressStateManager) collectTlsSecrets(ingress *v1Net.Ingress, result IngressState) []error {
+	errors := make([]error, 0)
+	for _, rule := range ingress.Spec.TLS {
+		secret, err := stateManager.k8sClients.SecretInformer.Lister().Secrets(ingress.Namespace).Get(rule.SecretName)
+		if err != nil {
+			log.Warn().Err(err).Msgf("error getting ingress TLS certificate secret %s in namespace %s",
+				rule.SecretName, ingress.Namespace)
+			errors = append(errors, fmt.Errorf("ngergs.de/TlsCertMissing: referenced secret %s", rule.SecretName))
+			continue
+		}
+		if secret.Type != v1Core.SecretTypeTLS {
+			log.Warn().Msgf("SecretInformer type mismatch, required kubernetes.io/tls, but found %s for secret %s in namespace %s",
+				secret.Type, secret.Name, secret.Namespace)
+			errors = append(errors, fmt.Errorf("ngergs.de/TlsCertWrongType: has to be kubernetees.io/tls"))
+			continue
+		}
+		for _, host := range rule.Hosts {
+			domainConfig := result.getOrAddEmpty(host)
+			domainConfig.TlsCert = &TlsCert{
+				Cert: secret.Data["tls.crt"],
+				Key:  secret.Data["tls.key"],
 			}
 		}
 	}
+	return errors
 }

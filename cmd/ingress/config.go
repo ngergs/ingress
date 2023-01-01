@@ -19,14 +19,14 @@ var accessLog = flag.Bool("access-log", true, "Prints an access log.")
 var debugLogging = flag.Bool("debug", false, "Log debug level")
 var help = flag.Bool("help", false, "Prints the help.")
 var prettyLogging = flag.Bool("pretty", false, "Activates zerolog pretty logging")
-var hostIpString = flag.String("host-ip", "", "Host IP addresses. Optional, but needs to be set if the ingress status should be updated")
+var hostIpString = flag.String("host-ip", "", "Host IP addresses. Optional, but needs to be set if the ingress status should be updated.")
 var hostIp net.IP
 var httpPort = flag.Int("http-port", 8080, "TCP-Port for the HTTP endpoint")
 var httpsPort = flag.Int("https-port", 8443, "TCP-Port for the HTTPs endpoint")
 var http3Enabled = flag.Bool("http3", false, "Whether http3 is enabled")
 var http3Port = flag.Int("http3-port", 8444, "UDP-Port for the HTTP3 endpoint. Note that Kubernetes merges ContainerPort configs using only the port (not combined with the protocol) as key.")
-var http2AltSvcPort = flag.Int("http2-alt-svc", 443, "h2 TCP-Port for the Alt-Svc HTTP-Header. May differ from https-port e.g. when a container with port mapping or load balancer with port mappings are used")
-var http3AltSvcPort = flag.Int("http3-alt-svc", 443, "h3 UDP-Port for the Alt-Svc HTTP-Header. May differ from http3-port e.g. when a container with port mapping or load balancer with port mappings are used")
+var http2AltSvcPort = flag.Int("http2-alt-svc", 443, "h2 TCP-Port for the Alt-Svc HTTP-Header. May differ from https-port e.g. when a container with port mapping or load balancer with port mappings are used.")
+var http3AltSvcPort = flag.Int("http3-alt-svc", 443, "h3 UDP-Port for the Alt-Svc HTTP-Header. May differ from http3-port e.g. when a container with port mapping or load balancer with port mappings are used.")
 var hstsEnabled = flag.Bool("hsts", false, "Set HSTS-Header")
 var hstsMaxAge = flag.Int("hsts-max-age", 63072000, "Max-Age for the HSTS-Header, only relevant if hsts is activated.")
 var hstsIncludeSubdomains = flag.Bool("hsts-subdomains", true, "Whether HSTS if activated should add the includeSubdomains directive.")
@@ -46,7 +46,7 @@ var shutdownDelay = flag.Int("shutdown-delay", 5, "Delay before shutting down th
 var writeTimeout = flag.Int("write-timeout", 10, "Timeout to write the complete response in seconds.")
 var hstsConfig *HstsConfig
 
-// HstsConfig holds the setting sfor HSTS (HTTP Strict Transport Security)
+// HstsConfig holds the setting for HSTS (HTTP Strict Transport Security)
 type HstsConfig struct {
 	MaxAge            int
 	IncludeSubdomains bool

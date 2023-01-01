@@ -30,7 +30,7 @@ func main() {
 	var wg sync.WaitGroup
 	sigtermCtx := websrv.SigTermCtx(context.Background())
 
-	reverseProxy, err := setupReverseProxy(sigtermCtx)
+	reverseProxy, ingressStateManager, err := setupReverseProxy(sigtermCtx)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not setup reverse proxy")
 	}
@@ -79,30 +79,36 @@ func main() {
 	} else {
 		wg.Wait()
 	}
+
+	// cleanup
+	err = ingressStateManager.CleanIngressStatus(context.Background())
+	if err != nil {
+		log.Error().Err(err).Msg("could not cleanup ingress state")
+	}
 }
 
 // setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everything for the reverse proxy.
 // This includes automatic updates when the Kubernetes resource status (ingress, service, secrets) changes.
-func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, err error) {
+func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, ingressStateManager *state.IngressStateManager, err error) {
 	k8sconfig, err := setupk8s()
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
+		return nil, nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
 	}
 	k8sclient, err := kubernetes.NewForConfig(k8sconfig)
 	if err != nil {
-		return nil, fmt.Errorf("error setting up k8s clients: %v", err)
+		return nil, nil, fmt.Errorf("error setting up k8s clients: %v", err)
 	}
 
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager, err := state.New(ctx, k8sclient, *ingressClassName, hostIp)
+	ingressStateManager, err = state.New(ctx, k8sclient, *ingressClassName, hostIp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup ingress state manager: %v", err)
+		return nil, nil, fmt.Errorf("failed to setup ingress state manager: %v", err)
 	}
 	reverseProxy = revproxy.New(revproxy.BackendTimeout(backendTimeout))
 
 	// start listening to state updated and forward them to the reverse proxy
 	go forwardUpdates(ctx, ingressStateManager, reverseProxy)
-	return reverseProxy, nil
+	return reverseProxy, ingressStateManager, nil
 }
 
 // setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config
