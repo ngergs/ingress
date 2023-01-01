@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -18,6 +19,8 @@ var accessLog = flag.Bool("access-log", true, "Prints an access log.")
 var debugLogging = flag.Bool("debug", false, "Log debug level")
 var help = flag.Bool("help", false, "Prints the help.")
 var prettyLogging = flag.Bool("pretty", false, "Activates zerolog pretty logging")
+var hostIpString = flag.String("host-ip", "", "Host IP addresses. Optional, but needs to be set if the ingress status should be updated")
+var hostIp net.IP
 var httpPort = flag.Int("http-port", 8080, "TCP-Port for the HTTP endpoint")
 var httpsPort = flag.Int("https-port", 8443, "TCP-Port for the HTTPs endpoint")
 var http3Enabled = flag.Bool("http3", false, "Whether http3 is enabled")
@@ -73,6 +76,12 @@ func setup() {
 			MaxAge:            *hstsMaxAge,
 			IncludeSubdomains: *hstsIncludeSubdomains,
 			Preload:           *hstsPreload,
+		}
+	}
+	if *hostIpString != "" {
+		hostIp = net.ParseIP(*hostIpString)
+		if hostIp == nil {
+			log.Warn().Msgf("Host IP is set, but not valid, will be ignored: %s", *hostIpString)
 		}
 	}
 

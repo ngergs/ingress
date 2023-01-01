@@ -2,22 +2,22 @@ package revproxy
 
 import (
 	"crypto/tls"
+	"github.com/ngergs/ingress/state"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"sort"
 	"strconv"
 
-	"github.com/ngergs/ingress/state"
 	"github.com/rs/zerolog/log"
 	v1Net "k8s.io/api/networking/v1"
 )
 
 // LoadIngressState loads a new ingress state as reverse proxy settings.
-// There is no downtime during this change. The new state is prosessed and then swapped in
+// There is no downtime during this change. The new state is processed and then swapped in
 // while supporting concurrent requests.
-// Once applied the reverse proxy is then purely definied by the new state.
-func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
+// Once applied the reverse proxy is then purely defined by the new state.
+func (proxy *ReverseProxy) LoadIngressState(state state.IngressState) error {
 	backendPathHandlers, err := getBackendPathHandlers(state, proxy.Transport)
 	if err != nil {
 		return err
@@ -37,13 +37,13 @@ func (proxy *ReverseProxy) LoadIngressState(state *state.IngressState) error {
 
 // getBackendPathHandlers is an internal function which evaluates the ingress state and collects the path rules from it.
 // Furthermore, also the relevant reverse proxy clients are already setup.
-// Paths are matched based on the principle that exact matches take prevelance over prefix matches.
-// If no exact match has been found the longest matching prefix path takes prevelance.
-func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {
+// Paths are matched based on the principle that exact matches take prevalence over prefix matches.
+// If no exact match has been found the longest matching prefix path takes prevalence.
+func getBackendPathHandlers(state state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {
 	pathHandlerMap := make(BackendRouting)
-	for host, pathRules := range state.BackendPaths {
-		proxies := make([]*backendPathHandler, len(pathRules))
-		for i, pathRule := range pathRules {
+	for host, domainConfig := range state {
+		proxies := make([]*backendPathHandler, len(domainConfig.BackendPaths))
+		for i, pathRule := range domainConfig.BackendPaths {
 
 			rawUrl := "http://" + pathRule.ServiceName +
 				"." + pathRule.Namespace +
@@ -80,10 +80,10 @@ func getBackendPathHandlers(state *state.IngressState, backendTransport *http.Tr
 
 // getTlsCerts is an internal function which collects the relevant tls-secrets
 // and also loads the certificates.
-func getTlsCerts(state *state.IngressState) (TlsCerts, error) {
+func getTlsCerts(state state.IngressState) (TlsCerts, error) {
 	tlsCerts := make(map[string]*tls.Certificate)
-	for host, secret := range state.TlsCerts {
-		cert, err := tls.X509KeyPair(secret.Cert, secret.Key)
+	for host, domainConfig := range state {
+		cert, err := tls.X509KeyPair(domainConfig.TlsCert.Cert, domainConfig.TlsCert.Key)
 		if err != nil {
 			return nil, err
 		}
