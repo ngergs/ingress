@@ -70,7 +70,7 @@ func New(ctx context.Context, client kubernetes.Interface, ingressClassName stri
 		for {
 			select {
 			case <-stateManager.k8sClients.addUpdDelChan:
-				stateManager.refetchState()
+				stateManager.refetchState(ctx)
 			case <-ctx.Done():
 				return
 			}
@@ -120,7 +120,7 @@ func (stateManager *IngressStateManager) CleanIngressStatus(ctx context.Context)
 }
 
 // refetchState is used to collect a new state from the Kubernetes API from scratch.
-func (stateManager *IngressStateManager) refetchState() {
+func (stateManager *IngressStateManager) refetchState(ctx context.Context) {
 	ingresses, err := stateManager.getIngresses()
 	if err != nil {
 		log.Error().Err(err).Msg("error listening ingresses")
@@ -133,7 +133,7 @@ func (stateManager *IngressStateManager) refetchState() {
 		errors = append(errors, stateManager.collectTlsSecrets(ingress, ingressState)...)
 		log.Debug().Msgf("ingress errors: %v", errors)
 		status := statusFromErrors(errors, stateManager.hostIp)
-		err := stateManager.k8sClients.updateIngressStatus(context.TODO(), ingress, status)
+		err := stateManager.k8sClients.updateIngressStatus(ctx, ingress, status)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to update ingress status")
 		}
