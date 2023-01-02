@@ -30,7 +30,7 @@ func main() {
 	var wg sync.WaitGroup
 	sigtermCtx := websrv.SigTermCtx(context.Background())
 
-	reverseProxy, err := setupReverseProxy(sigtermCtx)
+	reverseProxy, ingressStateManager, err := setupReverseProxy(sigtermCtx)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not setup reverse proxy")
 	}
@@ -79,30 +79,36 @@ func main() {
 	} else {
 		wg.Wait()
 	}
+
+	// cleanup
+	err = ingressStateManager.CleanIngressStatus(context.Background())
+	if err != nil {
+		log.Error().Err(err).Msg("could not cleanup ingress state")
+	}
 }
 
-// setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everyhing for the reverse proxy.
+// setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everything for the reverse proxy.
 // This includes automatic updates when the Kubernetes resource status (ingress, service, secrets) changes.
-func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, err error) {
+func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, ingressStateManager *state.IngressStateManager, err error) {
 	k8sconfig, err := setupk8s()
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
+		return nil, nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
 	}
 	k8sclient, err := kubernetes.NewForConfig(k8sconfig)
 	if err != nil {
-		return nil, fmt.Errorf("error setting up k8s clients: %v", err)
+		return nil, nil, fmt.Errorf("error setting up k8s clients: %v", err)
 	}
 
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager, err := state.New(ctx, k8sclient, *ingressClassName)
+	ingressStateManager, err = state.New(ctx, k8sclient, *ingressClassName, hostIp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup ingress state manager: %v", err)
+		return nil, nil, fmt.Errorf("failed to setup ingress state manager: %v", err)
 	}
 	reverseProxy = revproxy.New(revproxy.BackendTimeout(backendTimeout))
 
 	// start listening to state updated and forward them to the reverse proxy
-	go forwardUpdates(ingressStateManager, reverseProxy)
-	return reverseProxy, nil
+	go forwardUpdates(ctx, ingressStateManager, reverseProxy)
+	return reverseProxy, ingressStateManager, nil
 }
 
 // setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config
@@ -164,11 +170,16 @@ func setupk8s() (*rest.Config, error) {
 }
 
 // forwardUpdates listens to the update channel from the stateManager and calls the LoadIngressState method of the reverse proxy to forwards the results.
-func forwardUpdates(stateManager *state.IngressStateManager, reverseProxy *revproxy.ReverseProxy) {
-	for currentState := range stateManager.GetStateChan() {
-		err := reverseProxy.LoadIngressState(currentState)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to apply updated currentState")
+func forwardUpdates(ctx context.Context, stateManager *state.IngressStateManager, reverseProxy *revproxy.ReverseProxy) {
+	for {
+		select {
+		case currentState := <-stateManager.GetStateChan():
+			err := reverseProxy.LoadIngressState(currentState)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to apply updated currentState")
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }

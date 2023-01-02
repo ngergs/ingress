@@ -15,7 +15,7 @@ var pathType = v1Net.PathTypePrefix
 func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
-	stateManager, err := New(ctx, client, ingressClassName)
+	stateManager, err := New(ctx, client, ingressClassName, nil)
 	assert.NoError(t, err)
 	ingress := getDummyIngress()
 	service := getDummyService()
@@ -28,10 +28,10 @@ func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 
 	stateChan := stateManager.GetStateChan()
 	state := <-stateChan
-	backendPaths, ok := state.BackendPaths[host]
+	domainConfig, ok := state[host]
 	assert.True(t, ok)
-	assert.Equal(t, 1, len(backendPaths))
-	backendPath := backendPaths[0]
+	assert.Equal(t, 1, len(domainConfig.BackendPaths))
+	backendPath := domainConfig.BackendPaths[0]
 	assert.Equal(t, namespace, backendPath.Namespace)
 	assert.Equal(t, path, backendPath.Path)
 	assert.Equal(t, serviceName, backendPath.ServiceName)
@@ -55,7 +55,7 @@ func TestIngressServicePortName(t *testing.T) {
 func TestSecret(t *testing.T) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
-	stateManager, err := New(ctx, client, ingressClassName)
+	stateManager, err := New(ctx, client, ingressClassName, nil)
 	assert.NoError(t, err)
 	ingress := getDummyIngressSecretRef()
 	secret, cert, certKey := getDummySecret(t)
@@ -67,8 +67,8 @@ func TestSecret(t *testing.T) {
 
 	stateChan := stateManager.GetStateChan()
 	state := <-stateChan
-	loadedSecret, ok := state.TlsCerts[host]
+	domainConfig, ok := state[host]
 	assert.True(t, ok)
-	assert.Equal(t, cert, loadedSecret.Cert)
-	assert.Equal(t, certKey, loadedSecret.Key)
+	assert.Equal(t, cert, domainConfig.TlsCert.Cert)
+	assert.Equal(t, certKey, domainConfig.TlsCert.Key)
 }

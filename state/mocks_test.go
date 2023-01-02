@@ -18,7 +18,7 @@ const servicePort int32 = 8080
 const servicePortName = "port"
 const secretName = "secret"
 
-// getDummyIngress returns a dummy Kubernetes Ingress API-Ressource. Neither Service port nor port name are set and have to be set for tests.
+// getDummyIngress returns a dummy Kubernetes IngressInformer API-Ressource. Neither ServiceInformer port nor port name are set and have to be set for tests.
 func getDummyIngress() *v1Net.Ingress {
 	return &v1Net.Ingress{
 		ObjectMeta: v1Meta.ObjectMeta{
@@ -39,7 +39,7 @@ func getDummyIngress() *v1Net.Ingress {
 									Port: v1Net.ServiceBackendPort{}}}}}}}}}}}
 }
 
-// getDummyIngress returns a dummy Kubernetes Ingress API-Ressource. Neither Service port nor port name are set and have to be set for tests.
+// getDummyIngress returns a dummy Kubernetes IngressInformer API-Ressource. Neither ServiceInformer port nor port name are set and have to be set for tests.
 func getDummyIngressSecretRef() *v1Net.Ingress {
 	return &v1Net.Ingress{
 		ObjectMeta: v1Meta.ObjectMeta{
@@ -53,7 +53,7 @@ func getDummyIngressSecretRef() *v1Net.Ingress {
 			}}}}
 }
 
-// getDummyService returns a dummy Kubernetes Service API-Ressource.
+// getDummyService returns a dummy Kubernetes ServiceInformer API-Ressource.
 func getDummyService() *v1.Service {
 	return &v1.Service{
 		ObjectMeta: v1Meta.ObjectMeta{
@@ -66,7 +66,7 @@ func getDummyService() *v1.Service {
 			}}}}
 }
 
-// getDummyService returns a dummy Kubernetes Service API-Ressource.
+// getDummyService returns a dummy Kubernetes ServiceInformer API-Ressource.
 func getDummySecret(t *testing.T) (secret *v1.Secret, cert []byte, certKey []byte) {
 	var secretDataCert [20]byte
 	var secretDataCertKey [20]byte

@@ -33,6 +33,8 @@ Options:
         TCP-Port under which the health check endpoint runs. (default 8081)
   -help
         Prints the help.
+  -host-ip string
+        Host IP addresses. Optional, but needs to be set if the ingress status should be updated.
   -hsts
         Set HSTS-Header
   -hsts-max-age int
@@ -57,6 +59,14 @@ Options:
         Timeout for idle TCP connections with keep-alive in seconds. (default 30)
   -ingress-class-name string
         Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated. (default "ingress")
+  -metrics
+        Whether to start the metrics endpoint (/ under a separate port)
+  -metrics-access-log
+        Prints an access log for the metrics endpoint to stdout.
+  -metrics-namespace string
+        Prometheus namespace for the collected metrics. (default "ingress")
+  -metrics-port int
+        TCP-Port under which the metrics endpoint runs. (default 9090)
   -pretty
         Activates zerolog pretty logging
   -read-timeout int
