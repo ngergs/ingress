@@ -15,17 +15,16 @@ var pathType = v1Net.PathTypePrefix
 func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
-	stateManager, err := New(ctx, client, ingressClassName, nil)
-	assert.NoError(t, err)
 	ingress := getDummyIngress()
 	service := getDummyService()
 	setIngressPort(ingress)
-
-	_, err = client.CoreV1().Services(namespace).Create(ctx, service, v1Meta.CreateOptions{})
+	_, err := client.CoreV1().Services(namespace).Create(ctx, service, v1Meta.CreateOptions{})
 	assert.NoError(t, err)
 	_, err = client.NetworkingV1().Ingresses(namespace).Create(ctx, ingress, v1Meta.CreateOptions{})
 	assert.NoError(t, err)
 
+	stateManager, err := New(ctx, client, ingressClassName, nil)
+	assert.NoError(t, err)
 	stateChan := stateManager.GetStateChan()
 	state := <-stateChan
 	domainConfig, ok := state[host]
@@ -55,16 +54,16 @@ func TestIngressServicePortName(t *testing.T) {
 func TestSecret(t *testing.T) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset()
-	stateManager, err := New(ctx, client, ingressClassName, nil)
-	assert.NoError(t, err)
 	ingress := getDummyIngressSecretRef()
 	secret, cert, certKey := getDummySecret(t)
 
-	_, err = client.CoreV1().Secrets(namespace).Create(ctx, secret, v1Meta.CreateOptions{})
+	_, err := client.CoreV1().Secrets(namespace).Create(ctx, secret, v1Meta.CreateOptions{})
 	assert.NoError(t, err)
 	_, err = client.NetworkingV1().Ingresses(namespace).Create(ctx, ingress, v1Meta.CreateOptions{})
 	assert.NoError(t, err)
 
+	stateManager, err := New(ctx, client, ingressClassName, nil)
+	assert.NoError(t, err)
 	stateChan := stateManager.GetStateChan()
 	state := <-stateChan
 	domainConfig, ok := state[host]
