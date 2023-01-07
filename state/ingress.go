@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"net"
 	"strings"
+	"sync"
 )
 
 type IngressStateManager struct {
@@ -104,19 +105,34 @@ func (stateManager *IngressStateManager) getIngresses() ([]*v1Net.Ingress, error
 
 // CleanIngressStatus is supposed to be called during shutdown and removes all ingress status entries set by this instance.
 // The internal state channel is not updated.
-func (stateManager *IngressStateManager) CleanIngressStatus(ctx context.Context) error {
+func (stateManager *IngressStateManager) CleanIngressStatus(ctx context.Context) []error {
 	ingresses, err := stateManager.getIngresses()
 	if err != nil {
-		return err
+		return []error{err}
 	}
-
-	for _, ingress := range ingresses {
-		err := stateManager.k8sClients.cleanIngressStatus(ctx, ingress, stateManager.hostIp)
-		if err != nil {
-			return fmt.Errorf("could not clean ingress status: %v", err)
+	errors := make([]error, 0)
+	errChan := make(chan error)
+	defer close(errChan) // to stop the error collection goroutine
+	go func() {
+		for err := range errChan {
+			errors = append(errors, err)
 		}
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(len(ingresses))
+	for _, el := range ingresses {
+		go func(ingress *v1Net.Ingress) {
+			err := stateManager.k8sClients.cleanIngressStatus(ctx, ingress, stateManager.hostIp)
+			if err != nil {
+				errChan <- fmt.Errorf("could not clean ingress status: %v", err)
+			}
+			wg.Done()
+		}(el)
 	}
-	return nil
+	wg.Wait()
+
+	return errors
 }
 
 // refetchState is used to collect a new state from the Kubernetes API from scratch.
@@ -128,17 +144,34 @@ func (stateManager *IngressStateManager) refetchState(ctx context.Context) {
 	}
 
 	ingressState := make(IngressState)
+	updates := make([]*ingressStatusUpdate, 0)
 	for _, ingress := range ingresses {
 		errors := stateManager.collectBackendPaths(ingress, ingressState)
 		errors = append(errors, stateManager.collectTlsSecrets(ingress, ingressState)...)
 		log.Debug().Msgf("ingress errors: %v", errors)
-		status := statusFromErrors(errors, stateManager.hostIp)
-		err := stateManager.k8sClients.updateIngressStatus(ctx, ingress, status)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to update ingress status")
+		if stateManager.hostIp != nil {
+			updates = append(updates, &ingressStatusUpdate{
+				Ingress: ingress.DeepCopy(),
+				Status:  statusFromErrors(errors, stateManager.hostIp),
+			})
 		}
 	}
 	stateManager.ingressStateChan <- ingressState
+	if stateManager.hostIp != nil {
+		var wg sync.WaitGroup
+		wg.Add(len(updates))
+		for _, el := range updates {
+			go func(update *ingressStatusUpdate) {
+				err := stateManager.k8sClients.updateIngressStatus(ctx, update.Ingress, update.Status)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to update ingress status")
+				}
+				wg.Done()
+			}(el)
+		}
+		// make this blocking to make sure that we not start a new fetch before the status is updated
+		wg.Wait()
+	}
 }
 
 // statusFromErrors builds an ingress status from the given error list

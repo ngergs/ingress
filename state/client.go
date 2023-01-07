@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	v1 "k8s.io/api/networking/v1"
+	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/informers"
@@ -28,6 +29,11 @@ type kubernetesClients struct {
 	addUpdDelCallbackMu     sync.Mutex
 	addUpdDelCallbackQueued atomic.Bool
 	client                  kubernetes.Interface
+}
+
+type ingressStatusUpdate struct {
+	Ingress *v1Net.Ingress
+	Status  *v1Net.IngressLoadBalancerIngress
 }
 
 // AddUpdDelChan returns a signal channel that is triggered on add, update or delete calls from Kubernetes.
@@ -56,18 +62,18 @@ func newKubernetesClients(ctx context.Context, client kubernetes.Interface) (*ku
 }
 
 // updateIngressStatus updates the ingress status and syncs the result with Kubernetes (if changes have occurred)
-func (c *kubernetesClients) updateIngressStatus(ctx context.Context, ingress *v1.Ingress, status *v1.IngressLoadBalancerIngress) error {
-	currentStatus, _, ok := findIngressStatus(ingress.Status.LoadBalancer.Ingress, status.IP)
+func (c *kubernetesClients) updateIngressStatus(ctx context.Context, ingress *v1.Ingress, updatedStatus *v1Net.IngressLoadBalancerIngress) error {
+	currentStatus, _, ok := findIngressStatus(ingress.Status.LoadBalancer.Ingress, updatedStatus.IP)
 	// we set the message for both ports equal so no need to differentiate here
-	if ok && statusEqual(currentStatus, status) {
+	if ok && statusEqual(currentStatus, updatedStatus) {
 		return nil
 	}
 	return c.syncIngressStatus(ctx, ingress, func(ingressStatus []v1.IngressLoadBalancerIngress) ([]v1.IngressLoadBalancerIngress, bool) {
 		log.Debug().Msgf("Setting/Updating ingress status for %s in namespace %s", ingress.Name, ingress.Namespace)
-		if ok && statusContained(ingressStatus, status) {
+		if ok && statusContained(ingressStatus, updatedStatus) {
 			return ingressStatus, false
 		}
-		return setIngressStatus(ingressStatus, status), true
+		return setIngressStatus(ingressStatus, updatedStatus), true
 	})
 }
 

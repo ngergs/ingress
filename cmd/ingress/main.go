@@ -81,8 +81,8 @@ func main() {
 	}
 
 	// cleanup
-	err = ingressStateManager.CleanIngressStatus(context.Background())
-	if err != nil {
+	errors := ingressStateManager.CleanIngressStatus(context.Background())
+	for _, err := range errors {
 		log.Error().Err(err).Msg("could not cleanup ingress state")
 	}
 }
@@ -94,6 +94,8 @@ func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
 	}
+	k8sconfig.QPS = float32(*k8sClientQps)
+	k8sconfig.Burst = *k8sClientBurst
 	k8sclient, err := kubernetes.NewForConfig(k8sconfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error setting up k8s clients: %v", err)
