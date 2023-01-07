@@ -59,13 +59,15 @@ func newKubernetesClients(ctx context.Context, client kubernetes.Interface) (*ku
 func (c *kubernetesClients) updateIngressStatus(ctx context.Context, ingress *v1.Ingress, status *v1.IngressLoadBalancerIngress) error {
 	currentStatus, _, ok := findIngressStatus(ingress.Status.LoadBalancer.Ingress, status.IP)
 	// we set the message for both ports equal so no need to differentiate here
-	if ok && len(currentStatus.Ports) > 0 && len(status.Ports) > 0 &&
-		(currentStatus.Ports[0].Error == nil || status.Ports[0].Error == nil || *currentStatus.Ports[0].Error == *status.Ports[0].Error) {
+	if ok && statusEqual(currentStatus, status) {
 		return nil
 	}
-	return c.syncIngressStatus(ctx, ingress, func(ingressStatus []v1.IngressLoadBalancerIngress) []v1.IngressLoadBalancerIngress {
+	return c.syncIngressStatus(ctx, ingress, func(ingressStatus []v1.IngressLoadBalancerIngress) ([]v1.IngressLoadBalancerIngress, bool) {
 		log.Debug().Msgf("Setting/Updating ingress status for %s in namespace %s", ingress.Name, ingress.Namespace)
-		return setIngressStatus(ingressStatus, status)
+		if ok && statusContained(ingressStatus, status) {
+			return ingressStatus, false
+		}
+		return setIngressStatus(ingressStatus, status), true
 	})
 }
 
@@ -76,18 +78,22 @@ func (c *kubernetesClients) cleanIngressStatus(ctx context.Context, ingress *v1.
 		return nil
 	}
 
-	return c.syncIngressStatus(ctx, ingress, func(status []v1.IngressLoadBalancerIngress) []v1.IngressLoadBalancerIngress {
+	return c.syncIngressStatus(ctx, ingress, func(ingressStatus []v1.IngressLoadBalancerIngress) ([]v1.IngressLoadBalancerIngress, bool) {
 		log.Debug().Msgf("Cleaning ingress status for %s in namespace %s", ingress.Name, ingress.Namespace)
-		_, i, ok := findIngressStatus(status, hostIp.String())
+		_, i, ok := findIngressStatus(ingressStatus, hostIp.String())
 		if !ok {
-			return status
+			return ingressStatus, false
 		}
-		return append(ingress.Status.LoadBalancer.Ingress[:i], ingress.Status.LoadBalancer.Ingress[i+1:]...)
+		return append(ingress.Status.LoadBalancer.Ingress[:i], ingress.Status.LoadBalancer.Ingress[i+1:]...), true
 	})
 }
 
-// syncIngressStatus syncs the ingress status to the kubernetes api
-func (c *kubernetesClients) syncIngressStatus(ctx context.Context, ingress *v1.Ingress, patchStatus func([]v1.IngressLoadBalancerIngress) []v1.IngressLoadBalancerIngress) error {
+// ingressPatchStatusFunc patches an ingress status and returns a boolean whether this needs to be synced to the kubernetes api.
+// Usually false for this value makes only sense when the ingress state is already as desired.
+type ingressPatchStatusFunc func([]v1.IngressLoadBalancerIngress) (patchedStatus []v1.IngressLoadBalancerIngress, doSync bool)
+
+// syncIngressStatus syncs the ingress status to the kubernetes api.
+func (c *kubernetesClients) syncIngressStatus(ctx context.Context, ingress *v1.Ingress, patchStatus ingressPatchStatusFunc) error {
 	client := c.client.NetworkingV1().Ingresses(ingress.Namespace)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		current, err := client.Get(ctx, ingress.Name, v1Meta.GetOptions{})
@@ -95,7 +101,11 @@ func (c *kubernetesClients) syncIngressStatus(ctx context.Context, ingress *v1.I
 			log.Debug().Err(err).Msgf("ingress update error when fetching current ingress state")
 			return fmt.Errorf("ingress update error when fetching current ingress state: %v", err)
 		}
-		current.Status.LoadBalancer.Ingress = patchStatus(current.Status.LoadBalancer.Ingress)
+		var needSync bool
+		current.Status.LoadBalancer.Ingress, needSync = patchStatus(current.Status.LoadBalancer.Ingress)
+		if !needSync {
+			return nil
+		}
 		_, err = client.UpdateStatus(ctx, current, v1Meta.UpdateOptions{})
 		if err != nil {
 			log.Debug().Err(err).Msgf("ingress update error when saving updated ingress")
@@ -124,6 +134,30 @@ func findIngressStatus(status []v1.IngressLoadBalancerIngress, hostIP string) (r
 		}
 	}
 	return nil, -1, false
+}
+
+// statusContained returns whether the list contains a status element. The ports array is checked on a per element basis (order-sensitive)
+func statusContained(list []v1.IngressLoadBalancerIngress, el *v1.IngressLoadBalancerIngress) bool {
+	listEl, _, ok := findIngressStatus(list, el.IP)
+	return ok && statusEqual(listEl, el)
+}
+
+// statusEqual returns whether the two ingress status are equal. The ports array is checked on a per element basis (order-sensitive)
+func statusEqual(el1 *v1.IngressLoadBalancerIngress, el2 *v1.IngressLoadBalancerIngress) bool {
+	if el1.Hostname != el2.Hostname || el1.IP != el2.IP || len(el1.Ports) != len(el2.Ports) {
+		return false
+	}
+	// we set the ports ourselves so order is fixed
+	for i, port1 := range el1.Ports {
+		port2 := el2.Ports[i]
+		if port1.Port != port2.Port || port1.Protocol != port2.Protocol ||
+			(port1.Error != nil && port2.Error != nil && *port1.Error != *port2.Error) ||
+			((port1.Error == nil && port2.Error != nil) || (port1.Error != nil && port2.Error == nil)) {
+			return false
+		}
+		return false
+	}
+	return true
 }
 
 // setupInformers setups and start all internal informers and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
