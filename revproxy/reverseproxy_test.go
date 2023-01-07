@@ -6,19 +6,19 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTlsConfigMatch(t *testing.T) {
 	reverseProxy := getDummyReverseProxy(t, nil)
 	state := reverseProxy.state.Load()
-	assert.NotNil(t, state)
+	require.NotNil(t, state)
 	expectedCert := state.tlsCerts[dummyHost]
 	receivedCert, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})
-	assert.Nil(t, err)
-	assert.Equal(t, expectedCert, receivedCert)
+	require.Nil(t, err)
+	require.Equal(t, expectedCert, receivedCert)
 }
 
 func TestTlsConfigMissMatch(t *testing.T) {
@@ -26,7 +26,7 @@ func TestTlsConfigMissMatch(t *testing.T) {
 	_, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: "none",
 	})
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 }
 
 func TestTlsConfigStateNotRdy(t *testing.T) {
@@ -34,7 +34,7 @@ func TestTlsConfigStateNotRdy(t *testing.T) {
 	_, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})
-	assert.NotNil(t, err)
+	require.NotNil(t, err)
 }
 
 func internalTestHandlerProxying(t *testing.T, host string, path string, expectedStatus int) {
@@ -45,7 +45,7 @@ func internalTestHandlerProxying(t *testing.T, host string, path string, expecte
 	r.Host = host
 	r.URL = &url.URL{Path: path}
 	handler.ServeHTTP(w, r)
-	assert.Equal(t, expectedStatus, w.Result().StatusCode)
+	require.Equal(t, expectedStatus, w.Result().StatusCode)
 }
 
 func TestHandlerProxying(t *testing.T) {
@@ -63,10 +63,10 @@ func internalTestHandlerRedirecting(t *testing.T, host string, path string, expe
 	r.Host = host
 	r.URL = &url.URL{Path: path}
 	handler.ServeHTTP(w, r)
-	assert.Equal(t, expectedStatus, w.Result().StatusCode)
+	require.Equal(t, expectedStatus, w.Result().StatusCode)
 	if expectedStatus == http.StatusPermanentRedirect {
 		location := w.Result().Header.Get("Location")
-		assert.Equal(t, "https://"+host+path, location)
+		require.Equal(t, "https://"+host+path, location)
 	}
 }
 
@@ -82,7 +82,7 @@ func TestHandlerRedirecting(t *testing.T) {
 func internalTestHandlerStateNotRdy(t *testing.T, handler http.Handler) {
 	w, r, _ := getDefaultHandlerMocks()
 	handler.ServeHTTP(w, r)
-	assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
+	require.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
 }
 
 func TestHandlerStateNotRdy(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1Net "k8s.io/api/networking/v1"
 )
 
@@ -57,7 +57,7 @@ func getDummyReverseProxy(t *testing.T, handler http.Handler) *ReverseProxy {
 
 	var certData [20]byte
 	_, err := rand.Read(certData[:])
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	cert := tls.Certificate{
 		Certificate: [][]byte{certData[:]},
 	}

@@ -2,7 +2,7 @@ package state
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -19,22 +19,22 @@ func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 	service := getDummyService()
 	setIngressPort(ingress)
 	_, err := client.CoreV1().Services(namespace).Create(ctx, service, v1Meta.CreateOptions{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = client.NetworkingV1().Ingresses(namespace).Create(ctx, ingress, v1Meta.CreateOptions{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	stateManager, err := New(ctx, client, ingressClassName, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	stateChan := stateManager.GetStateChan()
 	state := <-stateChan
 	domainConfig, ok := state[host]
-	assert.True(t, ok)
-	assert.Equal(t, 1, len(domainConfig.BackendPaths))
+	require.True(t, ok)
+	require.Equal(t, 1, len(domainConfig.BackendPaths))
 	backendPath := domainConfig.BackendPaths[0]
-	assert.Equal(t, namespace, backendPath.Namespace)
-	assert.Equal(t, path, backendPath.Path)
-	assert.Equal(t, serviceName, backendPath.ServiceName)
-	assert.Equal(t, servicePort, backendPath.ServicePort)
+	require.Equal(t, namespace, backendPath.Namespace)
+	require.Equal(t, path, backendPath.Path)
+	require.Equal(t, serviceName, backendPath.ServiceName)
+	require.Equal(t, servicePort, backendPath.ServicePort)
 }
 
 func TestIngressServicePortNumber(t *testing.T) {
@@ -58,16 +58,16 @@ func TestSecret(t *testing.T) {
 	secret, cert, certKey := getDummySecret(t)
 
 	_, err := client.CoreV1().Secrets(namespace).Create(ctx, secret, v1Meta.CreateOptions{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = client.NetworkingV1().Ingresses(namespace).Create(ctx, ingress, v1Meta.CreateOptions{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	stateManager, err := New(ctx, client, ingressClassName, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	stateChan := stateManager.GetStateChan()
 	state := <-stateChan
 	domainConfig, ok := state[host]
-	assert.True(t, ok)
-	assert.Equal(t, cert, domainConfig.TlsCert.Cert)
-	assert.Equal(t, certKey, domainConfig.TlsCert.Key)
+	require.True(t, ok)
+	require.Equal(t, cert, domainConfig.TlsCert.Cert)
+	require.Equal(t, certKey, domainConfig.TlsCert.Key)
 }

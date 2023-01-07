@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfig(t *testing.T) {
@@ -13,9 +13,9 @@ func TestConfig(t *testing.T) {
 	}
 	timeout := time.Duration(10) * time.Second
 	configWithTimeout := config.clone()
-	assert.Equal(t, config, configWithTimeout)
+	require.Equal(t, config, configWithTimeout)
 	configWithTimeout.applyOptions(BackendTimeout(timeout))
-	//make shure that clone worked and the original config has not been changed
-	assert.Equal(t, time.Duration(0), config.BackendTimeout)
-	assert.Equal(t, timeout, configWithTimeout.BackendTimeout)
+	//make sure that clone worked and the original config has not been changed
+	require.Equal(t, time.Duration(0), config.BackendTimeout)
+	require.Equal(t, timeout, configWithTimeout.BackendTimeout)
 }
