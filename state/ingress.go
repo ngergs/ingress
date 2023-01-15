@@ -86,15 +86,17 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if apierrors.IsNotFound(err) {
 		log.Debug().Msgf("reconcile deleting ingress reference: %v", req)
 		delete(r.ingressState, req.NamespacedName)
+
+	} else {
+		if ingress != nil && ((ingress.Spec.IngressClassName != nil && *ingress.Spec.IngressClassName != r.ingressClassName) ||
+			(ingress.Spec.IngressClassName == nil && ingress.Annotations["kubernetes.io/ingress.class"] != r.ingressClassName)) {
+			log.Debug().Msgf("reconcile ignoring ingress due to class-name: %v", req)
+			return ctrl.Result{}, nil
+		}
+		log.Debug().Msgf("reconcile adding/updating ingress: %v", req)
+		r.ingressState[req.NamespacedName] = ingress.DeepCopy()
 	}
 
-	if ingress != nil && ((ingress.Spec.IngressClassName != nil && *ingress.Spec.IngressClassName != r.ingressClassName) ||
-		(ingress.Spec.IngressClassName == nil && ingress.Annotations["kubernetes.io/ingress.class"] != r.ingressClassName)) {
-		log.Debug().Msgf("reconcile ignoring ingress due to class-name: %v", req)
-		return ctrl.Result{}, nil
-	}
-	log.Debug().Msgf("reconcile processing ingress: %v", req)
-	r.ingressState[req.NamespacedName] = ingress.DeepCopy()
 	processedState, updates := r.processState()
 	r.ingressProcessedStateChan <- processedState
 	errors := r.updateStatus(ctx, updates)
