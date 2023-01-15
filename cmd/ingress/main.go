@@ -3,22 +3,22 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/ngergs/ingress/state"
 	"os"
 	"path/filepath"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ngergs/ingress/revproxy"
-	"github.com/ngergs/ingress/state"
 	"github.com/rs/zerolog/log"
 
 	websrv "github.com/ngergs/websrv/server"
 
-	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -28,9 +28,13 @@ import (
 func main() {
 	setup()
 	var wg sync.WaitGroup
-	sigtermCtx := websrv.SigTermCtx(context.Background())
+	sigtermCtx := websrv.SigTermCtx(context.Background(), time.Duration(*shutdownDelay)*time.Second)
 
-	reverseProxy, ingressStateManager, err := setupReverseProxy(sigtermCtx)
+	mgr, err := setupControllerManager()
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not setup controller manager")
+	}
+	reverseProxy, ingressStateReconciler, err := setupReverseProxy(sigtermCtx, mgr)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not setup reverse proxy")
 	}
@@ -40,9 +44,9 @@ func main() {
 	// port is defined below via listenAndServeTls. Therefore, do not set it here to avoid the illusion of it being of relevance here.
 	tlsServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
 	httpCtx := context.WithValue(sigtermCtx, websrv.ServerName, "http server")
-	websrv.AddGracefulShutdown(httpCtx, &wg, httpServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
+	websrv.AddGracefulShutdown(httpCtx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	tlsCtx := context.WithValue(sigtermCtx, websrv.ServerName, "https server")
-	websrv.AddGracefulShutdown(tlsCtx, &wg, tlsServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
+	websrv.AddGracefulShutdown(tlsCtx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
 	tlsConfig := getTlsConfig()
 	tlsConfig.GetCertificate = reverseProxy.GetCertificateFunc()
 
@@ -55,76 +59,84 @@ func main() {
 	if *http3Enabled {
 		quicServer := getServer(nil, reverseProxy.GetHandlerProxying(), middlewareTLS...)
 		quicCtx := context.WithValue(sigtermCtx, websrv.ServerName, "http3 server")
-		websrv.AddGracefulShutdown(quicCtx, &wg, quicServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
+		websrv.AddGracefulShutdown(quicCtx, &wg, quicServer, time.Duration(*shutdownTimeout)*time.Second)
 		go func() { errChan <- listenAndServeQuic(*http3Port, quicServer, tlsConfig) }()
 	}
-	if *metrics {
-		go func() {
-			metricsServer := getServer(metricsPort, promhttp.Handler(), websrv.Optional(websrv.AccessLog(), *metricsAccessLog))
-			metricsCtx := context.WithValue(sigtermCtx, websrv.ServerName, "prometheus metrics server")
-			websrv.AddGracefulShutdown(metricsCtx, &wg, metricsServer, time.Duration(*shutdownDelay)*time.Second, time.Duration(*shutdownTimeout)*time.Second)
-			log.Info().Msgf("Listening for prometheus metric scrapes under container port tcp/%s", metricsServer.Addr[1:])
-			errChan <- metricsServer.ListenAndServe()
-		}()
-	}
 
+	wg.Add(1)
+	go func() {
+		log.Info().Msg("starting control manager")
+		errChan <- ingressStateReconciler.Start(sigtermCtx)
+		log.Debug().Msg("stopped control manager")
+		wg.Done()
+	}()
 	go logErrors(errChan)
-	// stop health server after everything else has stopped
-	if *health {
-		healthServer := getServer(healthPort, websrv.HealthCheckHandler(), websrv.Optional(websrv.AccessLog(), *healthAccessLog))
-		healthCtx := context.WithValue(context.Background(), websrv.ServerName, "health server")
-		log.Info().Msgf("Starting healthcheck server on port tcp/%d", *healthPort)
-		// 1 second is sufficient as timeout for the health server
-		websrv.RunTillWaitGroupFinishes(healthCtx, &wg, healthServer, errChan, time.Duration(1)*time.Second)
-	} else {
-		wg.Wait()
-	}
-
+	wg.Wait()
 	// cleanup
-	errors := ingressStateManager.CleanIngressStatus(context.Background())
+	errors := ingressStateReconciler.CleanIngressStatus(context.Background())
 	for _, err := range errors {
 		log.Error().Err(err).Msg("could not cleanup ingress state")
 	}
 }
 
-// setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everything for the reverse proxy.
-// This includes automatic updates when the Kubernetes resource status (ingress, service, secrets) changes.
-func setupReverseProxy(ctx context.Context) (reverseProxy *revproxy.ReverseProxy, ingressStateManager *state.IngressStateManager, err error) {
+// setupControllerManager returns a configured controller manager from kubebuilder
+func setupControllerManager() (ctrl.Manager, error) {
 	k8sconfig, err := setupk8s()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
+		return nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
 	}
 	k8sconfig.QPS = float32(*k8sClientQps)
 	k8sconfig.Burst = *k8sClientBurst
-	k8sclient, err := kubernetes.NewForConfig(k8sconfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error setting up k8s clients: %v", err)
+		return nil, fmt.Errorf("error setting up k8s clients: %v", err)
+	}
+	mgr, err := ctrl.NewManager(k8sconfig, ctrl.Options{
+		Port:                   *controllerWebhookPort,
+		HealthProbeBindAddress: fmt.Sprintf(":%d", *healthPort),
+		LivenessEndpointName:   *healthPath,
+		ReadinessEndpointName:  *readinessPath,
+		MetricsBindAddress:     fmt.Sprintf(":%d", *metricsPort),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error setting up kubebuilder manager: %v", err)
+	}
+	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {
+		return nil, fmt.Errorf("error registering health check for controller manager %v", err)
+	}
+	if err = mgr.AddReadyzCheck("ready", healthz.Ping); err != nil {
+		return nil, fmt.Errorf("error registering ready check for controller manager %v", err)
+	}
+	return mgr, nil
+}
+
+// setupReverseProxy sets up the Kubernetes Api Client and subsequently sets up everything for the reverse proxy.
+// This includes automatic updates when the Kubernetes resource status (ingress, service, secrets) changes.
+func setupReverseProxy(ctx context.Context, mgr ctrl.Manager) (reverseProxy *revproxy.ReverseProxy, ingressStateReconciler *state.IngressReconciler, err error) {
+	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
+	ingressStateReconciler, err = state.New(mgr, *ingressClassName, hostIp)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error setting up ingress reconciler: %v", err)
 	}
 
-	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
-	ingressStateManager, err = state.New(ctx, k8sclient, *ingressClassName, hostIp)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup ingress state manager: %v", err)
+		return nil, nil, fmt.Errorf("failed to setup kubebuilder manager:%v", err)
 	}
 	reverseProxy = revproxy.New(revproxy.BackendTimeout(backendTimeout))
 
-	// start listening to state updated and forward them to the reverse proxy
-	go forwardUpdates(ctx, ingressStateManager, reverseProxy)
-	return reverseProxy, ingressStateManager, nil
+	go forwardUpdates(ctx, ingressStateReconciler, reverseProxy)
+	return reverseProxy, ingressStateReconciler, nil
 }
 
 // setupMiddleware constructs the relevant websrv.HandlerMiddleware for the given config
 func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []websrv.HandlerMiddleware) {
 	var promRegistration *websrv.PrometheusRegistration
 	var err error
-	if *metrics {
-		promRegistration, err = websrv.AccessMetricsRegister(prometheus.DefaultRegisterer, *metricsNamespace)
-		if err != nil {
-			log.Error().Err(err).Msg("Could not register custom prometheus metrics.")
-		}
+	promRegistration, err = websrv.AccessMetricsRegister(metrics.Registry, *metricsNamespace)
+	if err != nil {
+		log.Error().Err(err).Msg("Could not register custom prometheus metrics.")
 	}
 	middleware = []websrv.HandlerMiddleware{
-		websrv.Optional(websrv.AccessMetrics(promRegistration), *metrics),
+		websrv.Optional(websrv.AccessMetrics(promRegistration), *accessLog),
 		websrv.Optional(websrv.AccessLog(), *accessLog),
 		websrv.RequestID(),
 	}
@@ -172,10 +184,10 @@ func setupk8s() (*rest.Config, error) {
 }
 
 // forwardUpdates listens to the update channel from the stateManager and calls the LoadIngressState method of the reverse proxy to forwards the results.
-func forwardUpdates(ctx context.Context, stateManager *state.IngressStateManager, reverseProxy *revproxy.ReverseProxy) {
+func forwardUpdates(ctx context.Context, ingressReconciler *state.IngressReconciler, reverseProxy *revproxy.ReverseProxy) {
 	for {
 		select {
-		case currentState := <-stateManager.GetStateChan():
+		case currentState := <-ingressReconciler.GetStateChan():
 			err := reverseProxy.LoadIngressState(currentState)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to apply updated currentState")

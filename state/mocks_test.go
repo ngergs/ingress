@@ -36,7 +36,7 @@ func getDummyIngress() *v1Net.Ingress {
 							Backend: v1Net.IngressBackend{
 								Service: &v1Net.IngressServiceBackend{
 									Name: serviceName,
-									Port: v1Net.ServiceBackendPort{}}}}}}}}}}}
+									Port: v1Net.ServiceBackendPort{Name: servicePortName}}}}}}}}}}}
 }
 
 // getDummyIngress returns a dummy Kubernetes IngressInformer API-Ressource. Neither ServiceInformer port nor port name are set and have to be set for tests.

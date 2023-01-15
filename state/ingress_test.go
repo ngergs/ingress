@@ -5,7 +5,10 @@ import (
 	"github.com/stretchr/testify/require"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sync"
 	"testing"
 )
 
@@ -23,10 +26,26 @@ func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 	_, err = client.NetworkingV1().Ingresses(namespace).Create(ctx, ingress, v1Meta.CreateOptions{})
 	require.NoError(t, err)
 
-	stateManager, err := New(ctx, client, ingressClassName, nil)
+	stateReconciler := &IngressReconciler{
+		ingressClassName:          ingressClassName,
+		ingressState:              make(map[types.NamespacedName]*v1Net.Ingress),
+		ingressProcessedStateChan: make(chan IngressState),
+		k8sClients:                newKubernetesClients(client)}
+	err = stateReconciler.k8sClients.startInformers(ctx)
 	require.NoError(t, err)
-	stateChan := stateManager.GetStateChan()
+	stateReconciler.k8sClients.waitForSync(ctx)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// have to run this in parallel as stateChan has no cache
+		result, err := stateReconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: ingress.Name}})
+		require.NoError(t, err)
+		require.False(t, result.Requeue)
+	}()
+	stateChan := stateReconciler.GetStateChan()
 	state := <-stateChan
+	wg.Wait()
 	domainConfig, ok := state[host]
 	require.True(t, ok)
 	require.Equal(t, 1, len(domainConfig.BackendPaths))
@@ -62,9 +81,24 @@ func TestSecret(t *testing.T) {
 	_, err = client.NetworkingV1().Ingresses(namespace).Create(ctx, ingress, v1Meta.CreateOptions{})
 	require.NoError(t, err)
 
-	stateManager, err := New(ctx, client, ingressClassName, nil)
+	stateReconciler := &IngressReconciler{
+		ingressClassName:          ingressClassName,
+		ingressState:              make(map[types.NamespacedName]*v1Net.Ingress),
+		ingressProcessedStateChan: make(chan IngressState),
+		k8sClients:                newKubernetesClients(client)}
+	err = stateReconciler.k8sClients.startInformers(ctx)
 	require.NoError(t, err)
-	stateChan := stateManager.GetStateChan()
+	stateReconciler.k8sClients.waitForSync(ctx)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// have to run this in parallel as stateChan has no cache
+		result, err := stateReconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: ingress.Name}})
+		require.NoError(t, err)
+		require.False(t, result.Requeue)
+	}()
+	stateChan := stateReconciler.GetStateChan()
 	state := <-stateChan
 	domainConfig, ok := state[host]
 	require.True(t, ok)

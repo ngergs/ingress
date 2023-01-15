@@ -9,56 +9,40 @@ import (
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/informers"
-	v1ClientCore "k8s.io/client-go/informers/core/v1"
-	v1ClientNet "k8s.io/client-go/informers/networking/v1"
+
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
+	v1ClientCore "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/retry"
 	"net"
 	"sync"
-	"sync/atomic"
 )
 
 // kubernetesClients provides informers and ingress kubernetes clients for ingress updates.
 type kubernetesClients struct {
-	IngressInformer         v1ClientNet.IngressInformer
-	ServiceInformer         v1ClientCore.ServiceInformer
-	SecretInformer          v1ClientCore.SecretInformer
-	factories               []informers.SharedInformerFactory
-	addUpdDelChan           chan struct{}
-	addUpdDelCallbackMu     sync.Mutex
-	addUpdDelCallbackQueued atomic.Bool
-	client                  kubernetes.Interface
-}
-
-type ingressStatusUpdate struct {
-	Ingress *v1Net.Ingress
-	Status  *v1Net.IngressLoadBalancerIngress
-}
-
-// AddUpdDelChan returns a signal channel that is triggered on add, update or delete calls from Kubernetes.
-// The channel is triggered after syncing of the internal informers has been restored.
-// Multiple calls during the resync period are automatically debounced to one callback call.
-func (c *kubernetesClients) AddUpdDelChan() <-chan struct{} {
-	return c.addUpdDelChan
+	client        kubernetes.Interface
+	ServiceLister v1ClientCore.ServiceLister
+	SecretLister  v1ClientCore.SecretLister
+	factories     []informers.SharedInformerFactory
 }
 
 // newKubernetesClients creates a new kubernetesClients struct. The ctx can be used to cancel the listening to updates from the Kubernetes API.
-func newKubernetesClients(ctx context.Context, client kubernetes.Interface) (*kubernetesClients, error) {
-	factoryGeneral := informers.NewSharedInformerFactory(client, 0)
+func newKubernetesClients(client kubernetes.Interface) *kubernetesClients {
+	factoryService := informers.NewSharedInformerFactory(client, 0)
 	factorySecrets := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithTweakListOptions(
 		func(list *v1Meta.ListOptions) {
 			list.FieldSelector = fields.OneTermEqualSelector("type", "kubernetes.io/tls").String()
 		}))
+
+	// we have to instantiate the informers once to register them
+	factoryService.Core().V1().Services().Informer()
+	factorySecrets.Core().V1().Secrets().Informer()
 	clients := &kubernetesClients{
-		factories:       []informers.SharedInformerFactory{factoryGeneral, factorySecrets},
-		IngressInformer: factoryGeneral.Networking().V1().Ingresses(),
-		ServiceInformer: factoryGeneral.Core().V1().Services(),
-		SecretInformer:  factorySecrets.Core().V1().Secrets(),
-		addUpdDelChan:   make(chan struct{}),
-		client:          client,
+		client:        client,
+		factories:     []informers.SharedInformerFactory{factoryService, factorySecrets},
+		ServiceLister: factoryService.Core().V1().Services().Lister(),
+		SecretLister:  factorySecrets.Core().V1().Secrets().Lister(),
 	}
-	return clients, clients.startInformers(ctx)
+	return clients
 }
 
 // updateIngressStatus updates the ingress status and syncs the result with Kubernetes (if changes have occurred)
@@ -69,10 +53,10 @@ func (c *kubernetesClients) updateIngressStatus(ctx context.Context, ingress *v1
 		return nil
 	}
 	return c.syncIngressStatus(ctx, ingress, func(ingressStatus []v1.IngressLoadBalancerIngress) ([]v1.IngressLoadBalancerIngress, bool) {
-		log.Debug().Msgf("Setting/Updating ingress status for %s in namespace %s", ingress.Name, ingress.Namespace)
-		if ok && statusContained(ingressStatus, updatedStatus) {
+		if statusContained(ingressStatus, updatedStatus) {
 			return ingressStatus, false
 		}
+		log.Debug().Msgf("Setting/Updating ingress status for %s in namespace %s", ingress.Name, ingress.Namespace)
 		return setIngressStatus(ingressStatus, updatedStatus), true
 	})
 }
@@ -107,6 +91,7 @@ func (c *kubernetesClients) syncIngressStatus(ctx context.Context, ingress *v1.I
 			log.Debug().Err(err).Msgf("ingress update error when fetching current ingress state")
 			return fmt.Errorf("ingress update error when fetching current ingress state: %v", err)
 		}
+		current = current.DeepCopy()
 		var needSync bool
 		current.Status.LoadBalancer.Ingress, needSync = patchStatus(current.Status.LoadBalancer.Ingress)
 		if !needSync {
@@ -142,13 +127,13 @@ func findIngressStatus(status []v1.IngressLoadBalancerIngress, hostIP string) (r
 	return nil, -1, false
 }
 
-// statusContained returns whether the list contains a status element. The ports array is checked on a per element basis (order-sensitive)
+// statusContained returns whether the list contains a status element. The ports array is checked on a per-element basis (order-sensitive)
 func statusContained(list []v1.IngressLoadBalancerIngress, el *v1.IngressLoadBalancerIngress) bool {
 	listEl, _, ok := findIngressStatus(list, el.IP)
 	return ok && statusEqual(listEl, el)
 }
 
-// statusEqual returns whether the two ingress status are equal. The ports array is checked on a per element basis (order-sensitive)
+// statusEqual returns whether the two ingress status are equal. The ports array is checked on a per-element basis (order-sensitive)
 func statusEqual(el1 *v1.IngressLoadBalancerIngress, el2 *v1.IngressLoadBalancerIngress) bool {
 	if el1.Hostname != el2.Hostname || el1.IP != el2.IP || len(el1.Ports) != len(el2.Ports) {
 		return false
@@ -161,70 +146,16 @@ func statusEqual(el1 *v1.IngressLoadBalancerIngress, el2 *v1.IngressLoadBalancer
 			((port1.Error == nil && port2.Error != nil) || (port1.Error != nil && port2.Error == nil)) {
 			return false
 		}
-		return false
 	}
 	return true
 }
 
-// setupInformers setups and start all internal informers and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
+// startInforms starts all Informers
 func (c *kubernetesClients) startInformers(ctx context.Context) error {
-	if err := c.setupInformer(ctx, c.IngressInformer.Informer(), true); err != nil {
-		return fmt.Errorf("failed to setup ingress informer: %v", err)
-	}
-	if err := c.setupInformer(ctx, c.ServiceInformer.Informer(), true); err != nil {
-		return fmt.Errorf("failed to setup services informer: %v", err)
-	}
-	if err := c.setupInformer(ctx, c.SecretInformer.Informer(), false); err != nil {
-		return fmt.Errorf("failed to setup secret informer: %v", err)
-	}
-
 	for _, factory := range c.factories {
 		factory.Start(ctx.Done())
 	}
 	return nil
-}
-
-// setupInformer setups the given informer and sets the refetchState function as handler for AddFunc, UpdateFunc, DeleteFunc.
-func (c *kubernetesClients) setupInformer(ctx context.Context, informer cache.SharedIndexInformer, logDebug bool) error {
-	wrappedHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			if logDebug {
-				log.Debug().Msgf("Received k8s add update %v", obj)
-			}
-			go c.signalUpdateAfterSync(ctx)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			if logDebug {
-				log.Debug().Msgf("Received k8s update, new: %v, old: %v", oldObj, newObj)
-			}
-			go c.signalUpdateAfterSync(ctx)
-		},
-		DeleteFunc: func(obj interface{}) {
-			if logDebug {
-				log.Debug().Msgf("Received k8s delete update %v", obj)
-			}
-			go c.signalUpdateAfterSync(ctx)
-		},
-	}
-	_, err := informer.AddEventHandler(wrappedHandler)
-	return err
-}
-
-// signalUpdateAfterSync calls the callback after syncing of the internal informers has been restored.
-// Multiple calls during the resync period are automatically debounced to one callback call.
-func (c *kubernetesClients) signalUpdateAfterSync(ctx context.Context) {
-	log.Debug().Msg("k8s update called")
-	if !c.addUpdDelCallbackQueued.CompareAndSwap(false, true) {
-		log.Debug().Msg("k8s update already queued")
-		return
-	}
-	log.Debug().Msg("k8s update waits for k8s informers to sync")
-	c.waitForSync(ctx)
-	c.addUpdDelCallbackMu.Lock()
-	defer c.addUpdDelCallbackMu.Unlock()
-	c.addUpdDelCallbackQueued.Store(false)
-	log.Debug().Msg("signalling k8s update")
-	c.addUpdDelChan <- struct{}{}
 }
 
 // waitFroSync waits till all factories sync. No specific order is enforced.

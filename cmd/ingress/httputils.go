@@ -70,11 +70,14 @@ func addMiddleware(root http.Handler, handlerSetups ...websrv.HandlerMiddleware)
 // logErrors listens to the provided errChan and logs the received errors
 func logErrors(errChan <-chan error) {
 	for err := range errChan {
+		if err == nil {
+			continue
+		}
 		if errors.Is(err, http.ErrServerClosed) {
 			// thrown from listen, serve and listenAndServe during graceful shutdown
 			log.Debug().Err(err).Msg("Expected graceful shutdown error")
 		} else {
-			log.Fatal().Err(err).Msg("Error from server: %v")
+			log.Fatal().Err(err).Msg("Error from server")
 		}
 	}
 }

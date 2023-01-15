@@ -23,12 +23,12 @@ Usage: ./ingress {options}
 Options:
   -access-log
         Prints an access log. (default true)
+  -ctrl-webhook-ort int
+        TCP-Port under which the kubebuilder controller webhook server runs, currently unused. (default 8080)
   -debug
         Log debug level
-  -health
-        Whether to start the health check endpoint (/ under a separate port) (default true)
-  -health-access-log
-        Prints an access log for the health check endpoint to stdout.
+  -health-path string
+        Path under which the health endpoint runs. (default "/health")
   -health-port int
         TCP-Port under which the health check endpoint runs. (default 8081)
   -help
@@ -46,11 +46,11 @@ Options:
   -http-port int
         TCP-Port for the HTTP endpoint (default 8080)
   -http2-alt-svc int
-        h2 TCP-Port for the Alt-Svc HTTP-Header. May differ from https-port e.g. when a container with port mapping or load balancer with port mappings are used (default 443)
+        h2 TCP-Port for the Alt-Svc HTTP-Header. May differ from https-port e.g. when a container with port mapping or load balancer with port mappings are used. (default 443)
   -http3
         Whether http3 is enabled
   -http3-alt-svc int
-        h3 UDP-Port for the Alt-Svc HTTP-Header. May differ from http3-port e.g. when a container with port mapping or load balancer with port mappings are used (default 443)
+        h3 UDP-Port for the Alt-Svc HTTP-Header. May differ from http3-port e.g. when a container with port mapping or load balancer with port mappings are used. (default 443)
   -http3-port int
         UDP-Port for the HTTP3 endpoint. Note that Kubernetes merges ContainerPort configs using only the port (not combined with the protocol) as key. (default 8444)
   -https-port int
@@ -59,10 +59,12 @@ Options:
         Timeout for idle TCP connections with keep-alive in seconds. (default 30)
   -ingress-class-name string
         Corresponds to spec.ingressClassName. Only ingress definitions that match these are evaluated. (default "ingress")
-  -metrics
-        Whether to start the metrics endpoint (/ under a separate port)
-  -metrics-access-log
-        Prints an access log for the metrics endpoint to stdout.
+  -k8s-client-burst int
+        Query per second absolute threshold for client throttling (default 40)
+  -k8s-client-qps int
+        Query per second threshold above which client throttling occurs (default 20)
+  -kubeconfig string
+        Paths to a kubeconfig. Only required if out-of-cluster.
   -metrics-namespace string
         Prometheus namespace for the collected metrics. (default "ingress")
   -metrics-port int
@@ -71,6 +73,8 @@ Options:
         Activates zerolog pretty logging
   -read-timeout int
         Timeout to read the entire request in seconds. (default 10)
+  -ready-path string
+        Path under which the ready endpoint runs (health port). (default "/ready")
   -shutdown-delay int
         Delay before shutting down the server in seconds. To make sure that the load balancing of the surrounding infrastructure had time to update. (default 5)
   -shutdown-timeout int

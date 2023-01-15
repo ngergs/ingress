@@ -83,6 +83,9 @@ func getBackendPathHandlers(state state.IngressState, backendTransport *http.Tra
 func getTlsCerts(state state.IngressState) (TlsCerts, error) {
 	tlsCerts := make(map[string]*tls.Certificate)
 	for host, domainConfig := range state {
+		if domainConfig.TlsCert == nil {
+			continue
+		}
 		cert, err := tls.X509KeyPair(domainConfig.TlsCert.Cert, domainConfig.TlsCert.Key)
 		if err != nil {
 			return nil, err
