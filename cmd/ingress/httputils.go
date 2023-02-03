@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	websrv "github.com/ngergs/websrv/server"
 	"github.com/rs/zerolog/log"
 )
