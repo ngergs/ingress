@@ -139,6 +139,9 @@ func (r *IngressReconciler) findIngressForSecret(secret client.Object) []reconci
 
 // referencesSecret returns whether the ingress references the given secret
 func referencesSecret(el *v1Net.Ingress, secret client.Object) bool {
+	if el == nil {
+		return false
+	}
 	for _, tls := range el.Spec.TLS {
 		if tls.SecretName == secret.GetName() {
 			return true
@@ -169,8 +172,17 @@ func (r *IngressReconciler) findIngressForService(service client.Object) []recon
 
 // referencedService returns whether the ingress references the given service
 func referencesService(el *v1Net.Ingress, service client.Object) bool {
+	if el == nil {
+		return false
+	}
 	for _, rule := range el.Spec.Rules {
+		if rule.HTTP == nil {
+			continue
+		}
 		for _, path := range rule.HTTP.Paths {
+			if path.Backend.Service == nil {
+				continue
+			}
 			if path.Backend.Service.Name == service.GetName() {
 				return true
 			}
