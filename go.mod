@@ -47,7 +47,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/ginkgo/v2 v2.8.1 // indirect
+	github.com/onsi/ginkgo/v2 v2.8.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.14.0 // indirect
@@ -56,8 +56,8 @@ require (
 	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-18 v0.2.0 // indirect
-	github.com/quic-go/qtls-go1-19 v0.2.0 // indirect
-	github.com/quic-go/qtls-go1-20 v0.1.0 // indirect
+	github.com/quic-go/qtls-go1-19 v0.2.1 // indirect
+	github.com/quic-go/qtls-go1-20 v0.1.1 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
@@ -79,7 +79,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.26.1 // indirect
 	k8s.io/component-base v0.26.1 // indirect
 	k8s.io/klog/v2 v2.90.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20230210211930-4b0756abdef5 // indirect
+	k8s.io/kube-openapi v0.0.0-20230217203603-ff9a8e8fa21d // indirect
 	k8s.io/utils v0.0.0-20230209194617-a36077c30491 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
