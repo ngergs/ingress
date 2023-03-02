@@ -55,22 +55,22 @@ type ingressStatusUpdate struct {
 }
 
 // processState processed the current input State and returns the processed state as well as
-// needed updates for the ingress status
-func (r *IngressReconciler) processState() (state IngressState, updates []*ingressStatusUpdate) {
+// the curren desired ingress status
+func (r *IngressReconciler) processState() (state IngressState, desiredStatus []*ingressStatusUpdate) {
 	state = make(IngressState)
-	updates = make([]*ingressStatusUpdate, 0)
+	desiredStatus = make([]*ingressStatusUpdate, 0)
 	for _, ingress := range r.ingressState {
 		errors := r.collectBackendPaths(ingress, state)
 		errors = append(errors, r.collectTlsSecrets(ingress, state)...)
 		log.Debug().Msgf("ingress errors: %v", errors)
 		if r.hostIp != nil {
-			updates = append(updates, &ingressStatusUpdate{
+			desiredStatus = append(desiredStatus, &ingressStatusUpdate{
 				Ingress: ingress.DeepCopy(),
 				Status:  statusFromErrors(errors, r.hostIp),
 			})
 		}
 	}
-	return state, updates
+	return state, desiredStatus
 }
 
 // updateStatus updates the k8s ingress status, blocks till finished.

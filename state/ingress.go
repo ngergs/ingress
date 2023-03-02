@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"net"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -86,14 +87,18 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if apierrors.IsNotFound(err) {
 		log.Debug().Msgf("reconcile deleting ingress reference: %v", req)
 		delete(r.ingressState, req.NamespacedName)
-
 	} else {
 		if ingress != nil && ((ingress.Spec.IngressClassName != nil && *ingress.Spec.IngressClassName != r.ingressClassName) ||
 			(ingress.Spec.IngressClassName == nil && ingress.Annotations["kubernetes.io/ingress.class"] != r.ingressClassName)) {
-			log.Debug().Msgf("reconcile ignoring ingress due to class-name: %v", req)
+			log.Debug().Msgf("reconciling ignoring ingress due to class-name: %v", req)
 			return ctrl.Result{}, nil
 		}
 		log.Debug().Msgf("reconcile adding/updating ingress: %v", req)
+		currentIngress, ok := r.ingressState[req.NamespacedName]
+		if ok && reflect.DeepEqual(currentIngress.Spec, ingress.Spec) {
+			// already processed, nothing to do
+			return ctrl.Result{}, nil
+		}
 		r.ingressState[req.NamespacedName] = ingress.DeepCopy()
 	}
 
