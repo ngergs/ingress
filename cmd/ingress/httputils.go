@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	websrv "github.com/ngergs/websrv/v3/server"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	websrv "github.com/ngergs/websrv/server"
 	"github.com/rs/zerolog/log"
 )
 

@@ -17,7 +17,8 @@ import (
 	"github.com/ngergs/ingress/revproxy"
 	"github.com/rs/zerolog/log"
 
-	websrv "github.com/ngergs/websrv/server"
+	chi "github.com/go-chi/chi/v5/middleware"
+	websrv "github.com/ngergs/websrv/v3/server"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
@@ -141,7 +142,7 @@ func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []w
 	middleware = []websrv.HandlerMiddleware{
 		websrv.Optional(websrv.AccessMetrics(promRegistration), *accessLog),
 		websrv.Optional(websrv.AccessLog(), *accessLog),
-		websrv.RequestID(),
+		chi.RequestID,
 	}
 	middlewareTLS = middleware
 	headers := make(map[string]string)
@@ -153,7 +154,7 @@ func setupMiddleware() (middleware []websrv.HandlerMiddleware, middlewareTLS []w
 		headers["Alt-Svc"] = altSvc
 	}
 	middlewareTLS = append([]websrv.HandlerMiddleware{
-		websrv.Header(&websrv.Config{Headers: headers}),
+		websrv.Header(headers),
 	}, middlewareTLS...)
 	return
 }
