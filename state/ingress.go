@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 	"sync"
 
 	_ "k8s.io/apimachinery/pkg/fields"               // Required for Watching
@@ -58,10 +57,10 @@ func New(mgr ctrl.Manager, ingressClassName string, hostIp net.IP) (*IngressReco
 	}
 	return r, ctrl.NewControllerManagedBy(mgr).
 		For(&v1Net.Ingress{}).
-		Watches(&source.Kind{Type: &v1Core.Secret{}},
+		Watches(&v1Core.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.findIngressForSecret),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
-		Watches(&source.Kind{Type: &v1Core.Service{}},
+		Watches(&v1Core.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.findIngressForService),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		Complete(r)
@@ -122,7 +121,7 @@ func (r *IngressReconciler) Start(ctx context.Context) error {
 	return r.manager.Start(ctx)
 }
 
-func (r *IngressReconciler) findIngressForSecret(secret client.Object) []reconcile.Request {
+func (r *IngressReconciler) findIngressForSecret(_ context.Context, secret client.Object) []reconcile.Request {
 	log.Debug().Msgf("watch triggered from secret %s in namespace %s", secret.GetName(), secret.GetNamespace())
 	r.ingressStateLock.RLock()
 	defer r.ingressStateLock.RUnlock()
@@ -155,7 +154,7 @@ func referencesSecret(el *v1Net.Ingress, secret client.Object) bool {
 	return false
 }
 
-func (r *IngressReconciler) findIngressForService(service client.Object) []reconcile.Request {
+func (r *IngressReconciler) findIngressForService(_ context.Context, service client.Object) []reconcile.Request {
 	log.Debug().Msgf("watch triggered from service %s in namespace %s", service.GetName(), service.GetNamespace())
 	r.ingressStateLock.RLock()
 	defer r.ingressStateLock.RUnlock()
