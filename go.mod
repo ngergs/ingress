@@ -10,6 +10,7 @@ require (
 	github.com/quic-go/quic-go v0.36.0
 	github.com/rs/zerolog v1.29.1
 	github.com/stretchr/testify v1.8.1
+	go.uber.org/automaxprocs v1.5.2
 	k8s.io/api v0.27.3
 	k8s.io/apimachinery v0.27.3
 	k8s.io/client-go v0.27.3
@@ -58,9 +59,8 @@ require (
 	github.com/prometheus/procfs v0.11.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-19 v0.3.2 // indirect
-	github.com/quic-go/qtls-go1-20 v0.3.0 // indirect
+	github.com/quic-go/qtls-go1-20 v0.2.2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	go.uber.org/automaxprocs v1.5.2 // indirect
 	golang.org/x/crypto v0.10.0 // indirect
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df // indirect
 	golang.org/x/mod v0.11.0 // indirect
