@@ -23,6 +23,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+        _ "go.uber.org/automaxprocs"
 )
 
 // main starts the ingress controller
