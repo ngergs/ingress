@@ -3,12 +3,12 @@ package revproxy
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/rs/zerolog/log"
+	v1Net "k8s.io/api/networking/v1"
 	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
-
-	v1Net "k8s.io/api/networking/v1"
 )
 
 const acmePath = "/.well-known/acme-challenge"
@@ -18,7 +18,7 @@ type ReverseProxy struct {
 	// state holds the internal current state of the reverse proxy. Changes when a new config is loaded via the LoadIngressState method.
 	state atomic.Pointer[reverseProxyState]
 	// Transport are the transport configurations for the reverse proxy. Will be cloned for each path.
-	Transport *http.Transport
+	Transport http.RoundTripper
 }
 
 // BackendRouting contains a mopping of host name to the relevant backend path handlers in order of priority
@@ -60,12 +60,16 @@ func (pathHandlers *backendPathHandlers) match(path string) (pathHandler *backen
 func New(options ...ConfigOption) *ReverseProxy {
 	config := defaultConfig.clone().applyOptions(options...)
 
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		log.Warn().Msg("http.DefaultTransport is not *http.Transport, backendTimeout will not be configured")
+		return &ReverseProxy{Transport: http.DefaultTransport}
+	}
+	transport := defaultTransport.Clone()
 	transport.DialContext = (&net.Dialer{
 		Timeout: config.BackendTimeout,
 	}).DialContext
-	reverseProxy := &ReverseProxy{Transport: transport}
-	return reverseProxy
+	return &ReverseProxy{Transport: transport}
 }
 
 // GetCertificateFunc returns a function for the tls.Config.GetCertificate callback.

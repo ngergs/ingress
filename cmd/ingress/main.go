@@ -9,6 +9,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +26,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-        _ "go.uber.org/automaxprocs"
+	_ "go.uber.org/automaxprocs"
 )
 
 // main starts the ingress controller
@@ -33,7 +35,11 @@ func main() {
 	var wg sync.WaitGroup
 	sigtermCtx := websrv.SigTermCtx(context.Background(), time.Duration(*shutdownDelay)*time.Second)
 
-	mgr, err := setupControllerManager()
+	k8sConfig, err := setupk8s()
+	if err != nil {
+		log.Fatal().Err(err).Msg("error setting up k8s client")
+	}
+	mgr, err := setupControllerManager(k8sConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not setup controller manager")
 	}
@@ -50,8 +56,7 @@ func main() {
 	websrv.AddGracefulShutdown(httpCtx, &wg, httpServer, time.Duration(*shutdownTimeout)*time.Second)
 	tlsCtx := context.WithValue(sigtermCtx, websrv.ServerName, "https server")
 	websrv.AddGracefulShutdown(tlsCtx, &wg, tlsServer, time.Duration(*shutdownTimeout)*time.Second)
-	tlsConfig := getTlsConfig()
-	tlsConfig.GetCertificate = reverseProxy.GetCertificateFunc()
+	tlsConfig := getTlsConfig(reverseProxy.GetCertificateFunc())
 
 	errChan := make(chan error)
 	go func() {
@@ -83,25 +88,18 @@ func main() {
 }
 
 // setupControllerManager returns a configured controller manager from kubebuilder
-func setupControllerManager() (ctrl.Manager, error) {
-	k8sconfig, err := setupk8s()
-	if err != nil {
-		return nil, fmt.Errorf("failed to setup Kubernetes client: %w", err)
-	}
-	k8sconfig.QPS = float32(*k8sClientQps)
-	k8sconfig.Burst = *k8sClientBurst
-	if err != nil {
-		return nil, fmt.Errorf("error setting up k8s clients: %v", err)
-	}
+func setupControllerManager(k8sConfig *rest.Config) (ctrl.Manager, error) {
+	k8sConfig.QPS = float32(*k8sClientQps)
+	k8sConfig.Burst = *k8sClientBurst
 	log.Info().Msgf("Health check is tcp/%d/%s", *healthPort, *healthPath)
 	log.Info().Msgf("Readiness check is  tcp/%d/%s", *healthPort, *readinessPath)
-	log.Info().Msgf("Metrics address is tcp/%d/metrics", *metricsPort)
-	mgr, err := ctrl.NewManager(k8sconfig, ctrl.Options{
-		Port:                   -1, // set to something invalid to make sure this is not enabled by accident
+	log.Info().Msgf("Metrics address is tcp/%d//metrics", *metricsPort)
+	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
+		WebhookServer:          webhook.NewServer(webhook.Options{Port: -1}), //disable webhook server
 		HealthProbeBindAddress: fmt.Sprintf(":%d", *healthPort),
 		LivenessEndpointName:   *healthPath,
 		ReadinessEndpointName:  *readinessPath,
-		MetricsBindAddress:     fmt.Sprintf(":%d", *metricsPort),
+		Metrics:                server.Options{BindAddress: fmt.Sprintf(":%d", *metricsPort)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error setting up kubebuilder manager: %v", err)
