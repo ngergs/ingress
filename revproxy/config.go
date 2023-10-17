@@ -9,6 +9,7 @@ type Config struct {
 	//BackendTimeout is timeout for each proxied request to the respective backend.
 	// Defaults to 20 seconds.
 	BackendTimeout time.Duration
+	DnsAddr        string
 }
 
 var defaultConfig = Config{

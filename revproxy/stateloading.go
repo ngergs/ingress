@@ -39,7 +39,7 @@ func (proxy *ReverseProxy) LoadIngressState(state state.IngressState) error {
 // Furthermore, also the relevant reverse proxy clients are already setup.
 // Paths are matched based on the principle that exact matches take prevalence over prefix matches.
 // If no exact match has been found the longest matching prefix path takes prevalence.
-func getBackendPathHandlers(state state.IngressState, backendTransport *http.Transport) (BackendRouting, error) {
+func getBackendPathHandlers(state state.IngressState, backendTransport http.RoundTripper) (BackendRouting, error) {
 	pathHandlerMap := make(BackendRouting)
 	for host, domainConfig := range state {
 		proxies := make([]*backendPathHandler, len(domainConfig.BackendPaths))
@@ -56,7 +56,7 @@ func getBackendPathHandlers(state state.IngressState, backendTransport *http.Tra
 			log.Info().Msgf("Loaded proxy backend path %s for host %s and path %s", url.String(), host, pathRule.Path)
 
 			revProxy := httputil.NewSingleHostReverseProxy(url)
-			revProxy.Transport = backendTransport.Clone()
+			revProxy.Transport = backendTransport
 			proxies[i] = &backendPathHandler{
 				PathType:     pathRule.PathType,
 				Path:         pathRule.Path,
