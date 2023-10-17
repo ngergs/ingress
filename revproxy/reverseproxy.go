@@ -98,7 +98,8 @@ func (proxy *ReverseProxy) GetHandlerProxying() http.Handler {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		pathHandlers, ok := state.backendPathHandlers[r.Host]
+		// remove eventual port suffix from r.Host
+		pathHandlers, ok := state.backendPathHandlers[strings.Split(r.Host, ":")[0]]
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return // no response if host does not match
