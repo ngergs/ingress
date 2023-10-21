@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/go-logr/logr"
 	"github.com/jarcoal/httpmock"
 	"github.com/madflojo/testcerts"
 	"github.com/ngergs/ingress/revproxy"
 	"github.com/ngergs/ingress/state"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/k3s"
@@ -206,7 +208,7 @@ func setupCluster(ctx context.Context, t *testing.T) (reverseProxy *revproxy.Rev
 	clientSet, err = kubernetes.NewForConfig(k8sConfig)
 	require.NoError(t, err)
 
-	mgr, err := setupControllerManager(k8sConfig)
+	mgr, err := setupControllerManager(k8sConfig, logr.New(&logWrapper{Logger: log.Logger}))
 	require.NoError(t, err)
 	reverseProxy, ingressStateReconciler, err = setupReverseProxy(ctx, mgr)
 	require.NoError(t, err)

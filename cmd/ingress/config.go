@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/go-logr/logr"
+	"k8s.io/klog/v2"
 	"net"
 	"os"
 	"strconv"
@@ -53,7 +55,8 @@ type HstsConfig struct {
 	Preload           bool
 }
 
-func setup() {
+// setup parses the config files and returns a logr.Logger to pass to operator sdk
+func setup() logr.Logger {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s {options}\nOptions:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -87,7 +90,10 @@ func setup() {
 
 	stdlog.SetFlags(0)
 	stdlog.SetOutput(log.Logger)
+	logrLogger := logr.New(&logWrapper{Logger: log.Logger})
+	klog.SetLogger(logrLogger)
 	log.Info().Msgf("This is ingress version %s", version)
+	return logrLogger
 }
 
 // hstsHeader returns the HSTS HTTP-Header value

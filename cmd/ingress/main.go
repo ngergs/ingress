@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
 	"github.com/ngergs/ingress/state"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ import (
 
 // main starts the ingress controller
 func main() {
-	setup()
+	logger := setup()
 	var wg sync.WaitGroup
 	sigtermCtx := websrv.SigTermCtx(context.Background(), time.Duration(*shutdownDelay)*time.Second)
 
@@ -39,7 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("error setting up k8s client")
 	}
-	mgr, err := setupControllerManager(k8sConfig)
+	mgr, err := setupControllerManager(k8sConfig, logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not setup controller manager")
 	}
@@ -88,7 +89,7 @@ func main() {
 }
 
 // setupControllerManager returns a configured controller manager from kubebuilder
-func setupControllerManager(k8sConfig *rest.Config) (ctrl.Manager, error) {
+func setupControllerManager(k8sConfig *rest.Config, logger logr.Logger) (ctrl.Manager, error) {
 	k8sConfig.QPS = float32(*k8sClientQps)
 	k8sConfig.Burst = *k8sClientBurst
 	log.Info().Msgf("Health check is tcp/%d/%s", *healthPort, *healthPath)
@@ -100,6 +101,7 @@ func setupControllerManager(k8sConfig *rest.Config) (ctrl.Manager, error) {
 		LivenessEndpointName:   *healthPath,
 		ReadinessEndpointName:  *readinessPath,
 		Metrics:                server.Options{BindAddress: fmt.Sprintf(":%d", *metricsPort)},
+		Logger:                 logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error setting up kubebuilder manager: %v", err)
