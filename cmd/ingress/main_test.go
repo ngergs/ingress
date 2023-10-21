@@ -21,7 +21,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 )
@@ -200,8 +199,6 @@ func setupCluster(ctx context.Context, t *testing.T) (reverseProxy *revproxy.Rev
 		require.NoError(t, err)
 	}
 	kubeConfigYaml, err := k3sContainer.GetKubeConfig(ctx)
-	require.NoError(t, err)
-	err = os.WriteFile("/home/niklas/.kube/config", kubeConfigYaml, 0644)
 	require.NoError(t, err)
 	k8sConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeConfigYaml)
 	require.NoError(t, err)
