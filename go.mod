@@ -8,7 +8,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/go-logr/logr v1.2.4
 	github.com/jarcoal/httpmock v1.3.1
-	github.com/madflojo/testcerts v1.1.0
+	github.com/madflojo/testcerts v1.1.1
 	github.com/ngergs/websrv/v3 v3.0.8
 	github.com/quic-go/quic-go v0.39.1
 	github.com/rs/zerolog v1.31.0
