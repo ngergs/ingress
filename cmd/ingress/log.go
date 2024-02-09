@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/go-logr/logr"
 	"github.com/rs/zerolog"
+	"maps"
 )
 
 // set logger for operator sdk
@@ -32,26 +33,40 @@ func (l *logWrapper) Error(err error, msg string, keysAndValues ...interface{}) 
 	l.handleKeyValsMsg(event, msg, keysAndValues)
 }
 
+// WithValues returns a logger with the given values sets. The internal ap of values is shallow copied.
 // nolint: ireturn // needed to implement the logr.LogSink interface
 func (l *logWrapper) WithValues(keysAndValues ...interface{}) logr.LogSink {
+	result := l.shallowCopy()
 	if len(keysAndValues)%2 != 0 {
 		l.Logger.Warn().Msgf("could not parse additional key/values, array has odd length, dropped: %v", keysAndValues[len(keysAndValues)-1])
 		keysAndValues = keysAndValues[:len(keysAndValues)-2]
 	}
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if key, ok := keysAndValues[i].(string); ok {
-			l.additionalValues[key] = keysAndValues[i+1]
+			result.additionalValues[key] = keysAndValues[i+1]
 		} else {
 			l.Logger.Warn().Msgf("could not parse additional keys for log message, key is not of type string: %v", keysAndValues[i])
 		}
 	}
-	return l
+	return result
 }
 
+// WithName returns a logger with the given values sets. The internal ap of values is shallow copied.
 // nolint: ireturn // needed to implement the logr.LogSink interface
 func (l *logWrapper) WithName(name string) logr.LogSink {
-	l.additionalValues["name"] = name
-	return l
+	result := l.shallowCopy()
+	result.additionalValues["name"] = name
+	return result
+}
+
+// shallowCopy returns a copy of this logger, the additionalValues as well as the referenced upstream logger are shallow copied.
+func (l *logWrapper) shallowCopy() *logWrapper {
+	result := &logWrapper{
+		Logger:           l.Logger,
+		additionalValues: make(map[string]interface{}),
+	}
+	maps.Copy(result.additionalValues, l.additionalValues)
+	return result
 }
 
 // handleKeyValsMsg handles the passed msg and the generic list of key value pairs

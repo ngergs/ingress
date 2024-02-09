@@ -30,7 +30,7 @@ import (
 
 const (
 	testTimeout     = 60 * time.Second
-	testContainer   = "docker.io/rancher/k3s:v1.28.2-k3s1"
+	testContainer   = "docker.io/rancher/k3s:v1.29.1-k3s2"
 	svcName         = "app"
 	svcPort         = 8081
 	namespace       = "test"
@@ -76,7 +76,7 @@ LOOP:
 		case <-ctx.Done():
 			t.Error("error waiting for non HTTP 503 response from the reverse proxy")
 		case <-ticker.C:
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+net.JoinHostPort(host, strconv.Itoa(httpsTestPort)), nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+net.JoinHostPort(host, strconv.Itoa(httpsTestPort)), nil)
 			require.NoError(t, err)
 			r, err = httpClient.Do(req)
 			if err == nil {
