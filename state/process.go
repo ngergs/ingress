@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	v1Core "k8s.io/api/core/v1"
@@ -9,6 +10,19 @@ import (
 	"net"
 	"strings"
 	"sync"
+)
+
+const (
+	httpPort  = 80
+	httpsPort = 443
+)
+
+var (
+	ErrServicePortNotFound     = errors.New("service port not found")
+	ErrServicePortNameNotFound = errors.New("port name specified but not found in service")
+	ErrInvalidBackendService   = errors.New("backend service does contain neither port name nor port number for path")
+	ErrTlsSecretNotFound       = errors.New("referenced secret for tls certificate not found")
+	ErrTlsSecretWrongType      = errors.New("referenced secret for tls certificate has wrong type has to be kubernetes.io/tls")
 )
 
 // BackendPath is a data struct that holds the properties of a certain service backend
@@ -85,7 +99,7 @@ func (r *IngressReconciler) updateStatus(ctx context.Context, updates []*ingress
 				err := r.k8sClients.updateIngressStatus(ctx, update.Ingress, update.Status)
 				if err != nil {
 					errorMu.Lock()
-					errors = append(errors, fmt.Errorf("failed to update ingress status: %v", err))
+					errors = append(errors, fmt.Errorf("failed to update ingress status: %w", err))
 					errorMu.Unlock()
 				}
 				wg.Done()
@@ -114,11 +128,11 @@ func statusFromErrors(errors []error, hostIp net.IP) *v1Net.IngressLoadBalancerI
 	return &v1Net.IngressLoadBalancerIngress{
 		IP: hostIp.String(),
 		Ports: []v1Net.IngressPortStatus{
-			{Port: 80,
+			{Port: httpPort,
 				Protocol: "TCP",
 				Error:    errMsg,
 			},
-			{Port: 443,
+			{Port: httpsPort,
 				Protocol: "TCP",
 				Error:    errMsg,
 			},
@@ -146,7 +160,7 @@ func (r *IngressReconciler) collectBackendPaths(ingress *v1Net.Ingress, result I
 			err := r.updatePortFromService(backendPath, path.Backend.Service.Port.Name)
 			if err != nil {
 				log.Warn().Err(err).Msgf("could not determine service port: %s for backend service %s in namespace %s", path.Backend.Service.Port.Name, path.Backend.Service.Name, ingress.Namespace)
-				errors = append(errors, fmt.Errorf("ngergs.de/ServicePortNotFound: %s for backend service %s", path.Backend.Service.Port.Name, path.Backend.Service.Name))
+				errors = append(errors, fmt.Errorf("%w: %s for backend service %s", ErrServicePortNotFound, path.Backend.Service.Port.Name, path.Backend.Service.Name))
 				continue
 			} else {
 				backendPaths = append(backendPaths, backendPath)
@@ -161,7 +175,7 @@ func (r *IngressReconciler) collectBackendPaths(ingress *v1Net.Ingress, result I
 // If this has finished without error the config.ServicePort property is guaranteed to be set according to the current service spec.
 func (r *IngressReconciler) updatePortFromService(config *BackendPath, servicePortName string) error {
 	if config.ServicePort == 0 && servicePortName == "" {
-		return fmt.Errorf("invalid config for path %s. Backend service does contain neither port name nor port number", config.Path)
+		return fmt.Errorf("%w: %s", ErrInvalidBackendService, config.Path)
 	}
 	svc, err := r.k8sClients.ServiceLister.Services(config.Namespace).Get(config.ServiceName)
 	if err != nil {
@@ -180,24 +194,24 @@ func (r *IngressReconciler) updatePortFromService(config *BackendPath, servicePo
 			return nil
 		}
 	}
-	return fmt.Errorf("port name %s specified but not found in service %s in namespace %s", servicePortName, config.ServiceName, config.Namespace)
+	return fmt.Errorf("%w: port name %s in service %s in namespace %s", ErrServicePortNameNotFound, servicePortName, config.ServiceName, config.Namespace)
 }
 
 // collectTlsSecrets fetches for all secrets that are referenced in the ingresses the relevant kubernetes.io/tls secrets from the Kubernetes API and adds them to the ingressState
 func (r *IngressReconciler) collectTlsSecrets(ingress *v1Net.Ingress, result IngressState) []error {
-	errors := make([]error, 0)
+	errs := make([]error, 0)
 	for _, rule := range ingress.Spec.TLS {
 		secret, err := r.k8sClients.SecretLister.Secrets(ingress.Namespace).Get(rule.SecretName)
 		if err != nil {
 			log.Warn().Err(err).Msgf("error getting ingress TLS certificate secret %s in namespace %s",
 				rule.SecretName, ingress.Namespace)
-			errors = append(errors, fmt.Errorf("ngergs.de/TlsCertMissing: referenced secret %s", rule.SecretName))
+			errs = append(errs, fmt.Errorf("%w: %s", ErrTlsSecretNotFound, rule.SecretName))
 			continue
 		}
 		if secret.Type != v1Core.SecretTypeTLS {
 			log.Warn().Msgf("SecretInformer type mismatch, required kubernetes.io/tls, but found %s for secret %s in namespace %s",
 				secret.Type, secret.Name, secret.Namespace)
-			errors = append(errors, fmt.Errorf("ngergs.de/TlsCertWrongType: has to be kubernetees.io/tls"))
+			errs = append(errs, fmt.Errorf("%w: secret %s in namespace %s with type %s", ErrTlsSecretWrongType, secret.Name, secret.Namespace, secret.Type))
 			continue
 		}
 		for _, host := range rule.Hosts {
@@ -208,5 +222,5 @@ func (r *IngressReconciler) collectTlsSecrets(ingress *v1Net.Ingress, result Ing
 			}
 		}
 	}
-	return errors
+	return errs
 }

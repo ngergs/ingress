@@ -89,6 +89,8 @@ func main() {
 }
 
 // setupControllerManager returns a configured controller manager from kubebuilder
+//
+//nolint:ireturn // we only get an itnerface from ctrl.NewManager
 func setupControllerManager(k8sConfig *rest.Config, logger logr.Logger) (ctrl.Manager, error) {
 	k8sConfig.QPS = float32(*k8sClientQps)
 	k8sConfig.Burst = *k8sClientBurst
@@ -96,7 +98,7 @@ func setupControllerManager(k8sConfig *rest.Config, logger logr.Logger) (ctrl.Ma
 	log.Info().Msgf("Readiness check is  tcp/%d/%s", *healthPort, *readinessPath)
 	log.Info().Msgf("Metrics address is tcp/%d//metrics", *metricsPort)
 	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
-		WebhookServer:          webhook.NewServer(webhook.Options{Port: -1}), //disable webhook server
+		WebhookServer:          webhook.NewServer(webhook.Options{Port: -1}), // disable webhook server
 		HealthProbeBindAddress: fmt.Sprintf(":%d", *healthPort),
 		LivenessEndpointName:   *healthPath,
 		ReadinessEndpointName:  *readinessPath,
@@ -104,13 +106,13 @@ func setupControllerManager(k8sConfig *rest.Config, logger logr.Logger) (ctrl.Ma
 		Logger:                 logger,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error setting up kubebuilder manager: %v", err)
+		return nil, fmt.Errorf("error setting up kubebuilder manager: %w", err)
 	}
 	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {
-		return nil, fmt.Errorf("error registering health check for controller manager %v", err)
+		return nil, fmt.Errorf("error registering health check for controller manager %w", err)
 	}
 	if err = mgr.AddReadyzCheck("ready", healthz.Ping); err != nil {
-		return nil, fmt.Errorf("error registering ready check for controller manager %v", err)
+		return nil, fmt.Errorf("error registering ready check for controller manager %w", err)
 	}
 	return mgr, nil
 }
@@ -121,11 +123,11 @@ func setupReverseProxy(ctx context.Context, mgr ctrl.Manager) (reverseProxy *rev
 	backendTimeout := time.Duration(*readTimeout+*writeTimeout) * time.Second
 	ingressStateReconciler, err = state.New(mgr, *ingressClassName, hostIp)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error setting up ingress reconciler: %v", err)
+		return nil, nil, fmt.Errorf("error setting up ingress reconciler: %w", err)
 	}
 
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup kubebuilder manager:%v", err)
+		return nil, nil, fmt.Errorf("failed to setup kubebuilder manager: %w", err)
 	}
 	reverseProxy = revproxy.New(revproxy.BackendTimeout(backendTimeout))
 

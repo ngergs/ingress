@@ -2,9 +2,9 @@ package state
 
 import (
 	"crypto/rand"
+	"github.com/stretchr/testify/require"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,9 +71,9 @@ func getDummySecret(t *testing.T) (secret *v1.Secret, cert []byte, certKey []byt
 	var secretDataCert [20]byte
 	var secretDataCertKey [20]byte
 	_, err := rand.Read(secretDataCert[:])
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	_, err = rand.Read(secretDataCertKey[:])
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	return &v1.Secret{
 		ObjectMeta: v1Meta.ObjectMeta{
 			Name: secretName,

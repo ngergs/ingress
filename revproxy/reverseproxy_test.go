@@ -17,7 +17,7 @@ func TestTlsConfigMatch(t *testing.T) {
 	receivedCert, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, expectedCert, receivedCert)
 }
 
@@ -26,7 +26,7 @@ func TestTlsConfigMissMatch(t *testing.T) {
 	_, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: "none",
 	})
-	require.NotNil(t, err)
+	require.Error(t, err)
 }
 
 func TestTlsConfigStateNotRdy(t *testing.T) {
@@ -34,7 +34,7 @@ func TestTlsConfigStateNotRdy(t *testing.T) {
 	_, err := reverseProxy.GetCertificateFunc()(&tls.ClientHelloInfo{
 		ServerName: dummyHost,
 	})
-	require.NotNil(t, err)
+	require.Error(t, err)
 }
 
 func internalTestHandlerProxying(t *testing.T, host string, path string, expectedStatus int) {
@@ -45,7 +45,12 @@ func internalTestHandlerProxying(t *testing.T, host string, path string, expecte
 	r.Host = host
 	r.URL = &url.URL{Path: path}
 	handler.ServeHTTP(w, r)
-	require.Equal(t, expectedStatus, w.Result().StatusCode)
+	result := w.Result()
+	defer func() {
+		err := result.Body.Close()
+		require.NoError(t, err)
+	}()
+	require.Equal(t, expectedStatus, result.StatusCode)
 }
 
 func TestHandlerProxying(t *testing.T) {
@@ -63,9 +68,14 @@ func internalTestHandlerRedirecting(t *testing.T, host string, path string, expe
 	r.Host = host
 	r.URL = &url.URL{Path: path}
 	handler.ServeHTTP(w, r)
-	require.Equal(t, expectedStatus, w.Result().StatusCode)
+	result := w.Result()
+	defer func() {
+		err := result.Body.Close()
+		require.NoError(t, err)
+	}()
+	require.Equal(t, expectedStatus, result.StatusCode)
 	if expectedStatus == http.StatusPermanentRedirect {
-		location := w.Result().Header.Get("Location")
+		location := result.Header.Get("Location")
 		require.Equal(t, "https://"+host+path, location)
 	}
 }
@@ -82,7 +92,12 @@ func TestHandlerRedirecting(t *testing.T) {
 func internalTestHandlerStateNotRdy(t *testing.T, handler http.Handler) {
 	w, r, _ := getDefaultHandlerMocks()
 	handler.ServeHTTP(w, r)
-	require.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
+	result := w.Result()
+	defer func() {
+		err := result.Body.Close()
+		require.NoError(t, err)
+	}()
+	require.Equal(t, http.StatusServiceUnavailable, result.StatusCode)
 }
 
 func TestHandlerStateNotRdy(t *testing.T) {

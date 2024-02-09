@@ -57,7 +57,7 @@ func getDummyReverseProxy(t *testing.T, handler http.Handler) *ReverseProxy {
 
 	var certData [20]byte
 	_, err := rand.Read(certData[:])
-	require.Nil(t, err)
+	require.NoError(t, err)
 	cert := tls.Certificate{
 		Certificate: [][]byte{certData[:]},
 	}

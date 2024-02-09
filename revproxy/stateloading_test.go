@@ -14,7 +14,7 @@ func TestLoadIngressState(t *testing.T) {
 	inputState, cert := getValidDummyState(t)
 	reverseProxy := New()
 	err := reverseProxy.LoadIngressState(inputState)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	proxyState := reverseProxy.state.Load()
 	require.NotNil(t, proxyState)
 	require.Equal(t, cert, proxyState.tlsCerts[dummyHost])
@@ -29,7 +29,7 @@ func TestLoadIngressStateCertError(t *testing.T) {
 	inputState := getDummyState(nil, nil)
 	reverseProxy := New()
 	err := reverseProxy.LoadIngressState(inputState)
-	require.NotNil(t, err)
+	require.Error(t, err)
 }
 
 func requirePathEqual(t *testing.T, backendPath *state.BackendPath, proxyBackendPath *backendPathHandler) {
@@ -39,11 +39,11 @@ func requirePathEqual(t *testing.T, backendPath *state.BackendPath, proxyBackend
 
 func getValidDummyState(t *testing.T) (state.IngressState, *tls.Certificate) {
 	cert, err := tls.LoadX509KeyPair("../test/cert.pem", "../test/key.pem")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	certData, err := os.ReadFile("../test/cert.pem")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	certKey, err := os.ReadFile("../test/key.pem")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	return getDummyState(certData, certKey), &cert
 }
 

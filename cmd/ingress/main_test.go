@@ -10,6 +10,7 @@ import (
 	"github.com/ngergs/ingress/revproxy"
 	"github.com/ngergs/ingress/state"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/k3s"
@@ -20,7 +21,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"net"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -48,13 +51,13 @@ func TestIntegration(t *testing.T) {
 	ca := setupK8sApp(ctx, t, c)
 	go func() {
 		err := ingressStateReconciler.Start(ctx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}()
 	tlsServer := getServer(nil, revProxy.GetHandlerProxying())
 	tlsConfig := getTlsConfig(revProxy.GetCertificateFunc())
 	go func() {
 		err := listenAndServeTls(httpsTestPort, tlsServer, tlsConfig)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}()
 	time.Sleep(time.Millisecond)
 
@@ -73,7 +76,7 @@ LOOP:
 		case <-ctx.Done():
 			t.Error("error waiting for non HTTP 503 response from the reverse proxy")
 		case <-ticker.C:
-			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://%s:%d", host, httpsTestPort), nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+net.JoinHostPort(host, strconv.Itoa(httpsTestPort)), nil)
 			require.NoError(t, err)
 			r, err = httpClient.Do(req)
 			if err == nil {
@@ -90,7 +93,7 @@ LOOP:
 	require.NoError(t, err)
 	require.Equal(t, responseContent, string(data))
 	require.Equal(t, 1, httpmock.GetTotalCallCount())
-	require.Equal(t, 1, httpmock.GetCallCountInfo()[fmt.Sprintf("GET %s", svcUrl)])
+	require.Equal(t, 1, httpmock.GetCallCountInfo()["GET "+svcUrl])
 }
 
 func setupK8sApp(ctx context.Context, t *testing.T, c *kubernetes.Clientset) *testcerts.CertificateAuthority {
@@ -102,7 +105,7 @@ func setupK8sApp(ctx context.Context, t *testing.T, c *kubernetes.Clientset) *te
 }
 
 func setupIngress(ctx context.Context, t *testing.T, c *kubernetes.Clientset, svc *corev1.Service, certSecret *corev1.Secret) *netv1.Ingress {
-	require.Equal(t, len(svc.Spec.Ports), 1)
+	require.Len(t, svc.Spec.Ports, 1)
 	pathTypePrefix := netv1.PathTypePrefix
 	ingress, err := c.NetworkingV1().Ingresses(namespace).Create(ctx, &netv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
@@ -144,7 +147,7 @@ func setupCertSecret(ctx context.Context, t *testing.T, c *kubernetes.Clientset)
 	require.NoError(t, err)
 	secret, err := c.CoreV1().Secrets(namespace).Create(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-cert", host),
+			Name:      host + "-cert",
 			Namespace: namespace,
 		},
 		Type: corev1.SecretTypeTLS,

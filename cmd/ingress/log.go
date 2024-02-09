@@ -32,6 +32,7 @@ func (l *logWrapper) Error(err error, msg string, keysAndValues ...interface{}) 
 	l.handleKeyValsMsg(event, msg, keysAndValues)
 }
 
+// nolint: ireturn // needed to implement the logr.LogSink interface
 func (l *logWrapper) WithValues(keysAndValues ...interface{}) logr.LogSink {
 	if len(keysAndValues)%2 != 0 {
 		l.Logger.Warn().Msgf("could not parse additional key/values, array has odd length, dropped: %v", keysAndValues[len(keysAndValues)-1])
@@ -47,6 +48,7 @@ func (l *logWrapper) WithValues(keysAndValues ...interface{}) logr.LogSink {
 	return l
 }
 
+// nolint: ireturn // needed to implement the logr.LogSink interface
 func (l *logWrapper) WithName(name string) logr.LogSink {
 	l.additionalValues["name"] = name
 	return l

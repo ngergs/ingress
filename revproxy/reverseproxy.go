@@ -2,6 +2,7 @@ package revproxy
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	v1Net "k8s.io/api/networking/v1"
@@ -9,6 +10,11 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+)
+
+var (
+	ErrNotInitialized     = errors.New("state not initialized")
+	ErrNoCertificateFound = errors.New("no certificate found for servername")
 )
 
 const acmePath = "/.well-known/acme-challenge"
@@ -78,12 +84,12 @@ func (proxy *ReverseProxy) GetCertificateFunc() func(hello *tls.ClientHelloInfo)
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		state := proxy.state.Load()
 		if state == nil {
-			return nil, fmt.Errorf("state not initialized")
+			return nil, ErrNotInitialized
 		}
 		cert, ok := state.tlsCerts[hello.ServerName]
 
 		if !ok {
-			return nil, fmt.Errorf("no certificate found for servername %s", hello.ServerName)
+			return nil, fmt.Errorf("%w: %s", ErrNoCertificateFound, hello.ServerName)
 		}
 		return cert, nil
 	}

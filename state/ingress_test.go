@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1Net "k8s.io/api/networking/v1"
 	v1Meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,15 +41,15 @@ func internalTestIngress(t *testing.T, setIngressPort func(*v1Net.Ingress)) {
 		defer wg.Done()
 		// have to run this in parallel as stateChan has no cache
 		result, err := stateReconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: ingress.Name}})
-		require.NoError(t, err)
-		require.False(t, result.Requeue)
+		assert.NoError(t, err)
+		assert.False(t, result.Requeue)
 	}()
 	stateChan := stateReconciler.GetStateChan()
 	state := <-stateChan
 	wg.Wait()
 	domainConfig, ok := state[host]
 	require.True(t, ok)
-	require.Equal(t, 1, len(domainConfig.BackendPaths))
+	require.Len(t, domainConfig.BackendPaths, 1)
 	backendPath := domainConfig.BackendPaths[0]
 	require.Equal(t, namespace, backendPath.Namespace)
 	require.Equal(t, path, backendPath.Path)
@@ -95,8 +96,8 @@ func TestSecret(t *testing.T) {
 		defer wg.Done()
 		// have to run this in parallel as stateChan has no cache
 		result, err := stateReconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: ingress.Name}})
-		require.NoError(t, err)
-		require.False(t, result.Requeue)
+		assert.NoError(t, err)
+		assert.False(t, result.Requeue)
 	}()
 	stateChan := stateReconciler.GetStateChan()
 	state := <-stateChan

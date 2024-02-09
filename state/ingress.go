@@ -45,7 +45,7 @@ type IngressReconciler struct {
 func New(mgr ctrl.Manager, ingressClassName string, hostIp net.IP) (*IngressReconciler, error) {
 	k8sClients, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
-		return nil, fmt.Errorf("error constructing k8s clients from manager config: %v", err)
+		return nil, fmt.Errorf("error constructing k8s clients from manager config: %w", err)
 	}
 	r := &IngressReconciler{
 		ingressClassName:          ingressClassName,
@@ -79,7 +79,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	log.Debug().Msgf("reconciling ingress: %v", req)
 	ingress, err := r.k8sClients.client.NetworkingV1().Ingresses(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{Requeue: true}, fmt.Errorf("error fetching ingress state: %v", err)
+		return ctrl.Result{Requeue: true}, fmt.Errorf("error fetching ingress state: %w", err)
 	}
 	r.ingressStateLock.Lock()
 	defer r.ingressStateLock.Unlock()
@@ -114,7 +114,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // Start sets up the informers and the controller with the Manager, blocks till the context is cancelled or an error occurs.
 func (r *IngressReconciler) Start(ctx context.Context) error {
 	if err := r.k8sClients.startInformers(ctx); err != nil {
-		return fmt.Errorf("failed to start kubernetes informers: %v", err)
+		return fmt.Errorf("failed to start kubernetes informers: %w", err)
 	}
 	r.k8sClients.waitForSync(ctx)
 
@@ -215,7 +215,7 @@ func (r *IngressReconciler) CleanIngressStatus(ctx context.Context) []error {
 		go func(ingress *v1Net.Ingress) {
 			err := r.k8sClients.cleanIngressStatus(ctx, ingress, r.hostIp)
 			if err != nil {
-				errChan <- fmt.Errorf("could not clean ingress status: %v", err)
+				errChan <- fmt.Errorf("could not clean ingress status: %w", err)
 			}
 			wg.Done()
 		}(el)

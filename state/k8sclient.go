@@ -89,7 +89,7 @@ func (c *kubernetesClients) syncIngressStatus(ctx context.Context, ingress *v1.I
 		current, err := client.Get(ctx, ingress.Name, v1Meta.GetOptions{})
 		if err != nil {
 			log.Debug().Err(err).Msgf("ingress update error when fetching current ingress state")
-			return fmt.Errorf("ingress update error when fetching current ingress state: %v", err)
+			return fmt.Errorf("ingress update error when fetching current ingress state: %w", err)
 		}
 		current = current.DeepCopy()
 		var needSync bool
@@ -100,7 +100,7 @@ func (c *kubernetesClients) syncIngressStatus(ctx context.Context, ingress *v1.I
 		_, err = client.UpdateStatus(ctx, current, v1Meta.UpdateOptions{})
 		if err != nil {
 			log.Debug().Err(err).Msgf("ingress update error when saving updated ingress")
-			return fmt.Errorf("ingress update error when saving updated ingress: %v", err)
+			return fmt.Errorf("ingress update error when saving updated ingress: %w", err)
 		}
 		return nil
 	})

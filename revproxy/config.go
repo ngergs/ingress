@@ -6,12 +6,13 @@ import (
 
 // Config is a data structure that holds the config options for the reverse proxy
 type Config struct {
-	//BackendTimeout is timeout for each proxied request to the respective backend.
+	// BackendTimeout is timeout for each proxied request to the respective backend.
 	// Defaults to 20 seconds.
 	BackendTimeout time.Duration
 	DnsAddr        string
 }
 
+//nolint:gomnd
 var defaultConfig = Config{
 	BackendTimeout: time.Duration(20) * time.Second,
 }
