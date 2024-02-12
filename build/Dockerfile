@@ -1,4 +1,4 @@
-FROM golang:1.21.1-alpine as build-container
+FROM golang:1.22.0-alpine as build-container
 ARG VERSION=snapshot
 
 COPY . /root/app
