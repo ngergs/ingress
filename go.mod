@@ -1,6 +1,6 @@
 module github.com/ngergs/ingress
 
-go 1.21
+go 1.22
 
 replace github.com/ngergs/ingress => ./
 
