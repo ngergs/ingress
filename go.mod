@@ -9,7 +9,7 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/jarcoal/httpmock v1.3.1
 	github.com/madflojo/testcerts v1.1.1
-	github.com/ngergs/websrv/v3 v3.0.10
+	github.com/ngergs/websrv/v3 v3.0.11
 	github.com/quic-go/quic-go v0.41.0
 	github.com/rs/zerolog v1.32.0
 	github.com/stretchr/testify v1.8.4

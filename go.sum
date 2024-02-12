@@ -144,8 +144,8 @@ github.com/morikuni/aec v1.0.0/go.mod h1:BbKIizmSmc5MMPqRYbxO4ZU0S0+P200+tUnFx7P
 github.com/mrunalp/fileutils v0.5.0/go.mod h1:M1WthSahJixYnrXQl/DFQuteStB1weuxD2QJNHXfbSQ=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
-github.com/ngergs/websrv/v3 v3.0.10 h1:YD6WDjihs/fomb3JUw9iZoWPC2Vw7uwSznFMlycSmRM=
-github.com/ngergs/websrv/v3 v3.0.10/go.mod h1:2fuQ3fSaVYRedEch13k2TmoEGLpGTdHuuntESbuPDwU=
+github.com/ngergs/websrv/v3 v3.0.11 h1:0nUs3Mwsi1N20ALH8+3qTE6tkONJki92HkhJwDyr0iQ=
+github.com/ngergs/websrv/v3 v3.0.11/go.mod h1:UwEYuWsvQ9LZ2LrLm+a7f28C/l/SJ1COu1KZPoJ3e7M=
 github.com/onsi/ginkgo/v2 v2.15.0 h1:79HwNRBAZHOEwrczrgSOPy+eFTTlIGELKy5as+ClttY=
 github.com/onsi/ginkgo/v2 v2.15.0/go.mod h1:HlxMHtYF57y6Dpf+mc5529KKmSq9h2FpCF+/ZkwUxKM=
 github.com/onsi/gomega v1.30.0 h1:hvMK7xYz4D3HapigLTeGdId/NcfQx1VHMJc60ew99+8=
