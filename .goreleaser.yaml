@@ -1,0 +1,26 @@
+gomod:
+  proxy: true
+
+archives:
+  - files:
+      - LICENSE
+      - README.md
+      - legal/**/*
+
+builds:
+  - main: ./cmd/ingress/
+    binary: ingress
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+dockers:
+  - image_templates:
+      - "ngergs/ingress:laingress"
+      - "ngergs/ingress:v{{ .Major }}"
+      - "ngergs/ingress:v{{ .Major }}.{{ .Minor }}"
+      - "ngergs/ingress:v{{ .Tag }}"
+    dockerfile: build/Dockerfile
+    extra_files:
+      - legal

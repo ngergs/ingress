@@ -2,8 +2,6 @@ module github.com/ngergs/ingress
 
 go 1.22
 
-replace github.com/ngergs/ingress => ./
-
 require (
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/go-logr/logr v1.4.1
