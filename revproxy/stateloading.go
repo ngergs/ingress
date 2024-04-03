@@ -2,7 +2,7 @@ package revproxy
 
 import (
 	"crypto/tls"
-	"github.com/ngergs/ingress/state"
+	"github.com/ngergs/ingress/v2/state"
 	"net/http"
 	"net/http/httputil"
 	"net/url"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
-	"github.com/ngergs/ingress/state"
+	"github.com/ngergs/ingress/v2/state"
 	"os"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngergs/ingress/revproxy"
+	"github.com/ngergs/ingress/v2/revproxy"
 	"github.com/rs/zerolog/log"
 
 	chi "github.com/go-chi/chi/v5/middleware"

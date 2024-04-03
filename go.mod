@@ -1,4 +1,4 @@
-module github.com/ngergs/ingress
+module github.com/ngergs/ingress/v2
 
 go 1.22
 
