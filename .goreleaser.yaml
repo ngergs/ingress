@@ -17,7 +17,7 @@ builds:
 
 dockers:
   - image_templates:
-      - "ngergs/ingress:laingress"
+      - "ngergs/ingress:latest"
       - "ngergs/ingress:v{{ .Major }}"
       - "ngergs/ingress:v{{ .Major }}.{{ .Minor }}"
       - "ngergs/ingress:v{{ .Tag }}"
