@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0](https://github.com/ngergs/ingress/compare/v2.1.7...v2.2.0) (2024-04-03)
+
+
+### Features
+
+* adjust module path (version suffix) ([389f778](https://github.com/ngergs/ingress/commit/389f778ade540ab87d6b38afa4196b115979b891))
+
+
+### Bug Fixes
+
+* goreleaser full version tag typo ([a0dc233](https://github.com/ngergs/ingress/commit/a0dc2339f72904694ed0d7cc48c9868940d18457))
+
 ## [2.1.7](https://github.com/ngergs/ingress/compare/v2.1.6...v2.1.7) (2024-04-03)
 
 
