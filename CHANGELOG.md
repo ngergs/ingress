@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.1](https://github.com/ngergs/ingress/compare/v2.2.0...v2.2.1) (2024-04-03)
+
+
+### Bug Fixes
+
+* dependency updates ([1603215](https://github.com/ngergs/ingress/commit/1603215d9193a1f1b01718f3baac4eabd5f6340b))
+* go version 1.22.2 ([02ddc0b](https://github.com/ngergs/ingress/commit/02ddc0b2a1be9f4cf6d6521b6614c75c8a46ff7a))
+
 ## [2.2.0](https://github.com/ngergs/ingress/compare/v2.1.7...v2.2.0) (2024-04-03)
 
 
