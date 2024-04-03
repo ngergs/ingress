@@ -20,7 +20,7 @@ dockers:
       - "ngergs/ingress:latest"
       - "ngergs/ingress:v{{ .Major }}"
       - "ngergs/ingress:v{{ .Major }}.{{ .Minor }}"
-      - "ngergs/ingress:v{{ .Tag }}"
+      - "ngergs/ingress:{{ .Tag }}"
     dockerfile: build/Dockerfile
     extra_files:
       - legal
